@@ -2261,25 +2261,40 @@ static uint32_t macho_swap32(uint32_t x)
 #define tbd_parse_trample *pos++=0
 
 #ifdef TCC_IS_NATIVE
+
+// This works around an issue where overriding libc free breaks freeing this memory
+// since we technically only need to call this once, we can just keep it around
+// it should be faster that way anyhow since it means we only call 
+// dlopen() just once
+char* xcode_select_sdkroot;
+bool xcode_select_loaded = false;
+
 /* Looks for the active developer SDK set by xcode-select (or the default
    one set during installation.) */
 ST_FUNC void tcc_add_macos_sdkpath(TCCState* s)
 {
-    char *sdkroot = NULL, *pos = NULL;
-    void* xcs = dlopen("libxcselect.dylib", RTLD_GLOBAL | RTLD_LAZY);
+    if (!xcode_select_loaded)  {
+        xcode_select_sdkroot = NULL;
+        void* xcs = dlopen("libxcselect.dylib", RTLD_GLOBAL | RTLD_LAZY);
+        int (*f)(unsigned int, char**) = dlsym(xcs, "xcselect_host_sdk_path");
+        if (f) f(1, &xcode_select_sdkroot);
+        xcode_select_loaded = true;
+    }
+    
+    char *pos = NULL;
     CString path;
-    int (*f)(unsigned int, char**) = dlsym(xcs, "xcselect_host_sdk_path");
+    
     cstr_new(&path);
-    if (f) f(1, &sdkroot);
-    if (sdkroot)
-        pos = strstr(sdkroot,"SDKs/MacOSX");
+    
+    if (xcode_select_sdkroot)
+        pos = strstr(xcode_select_sdkroot,"SDKs/MacOSX");
     if (pos)
-        cstr_printf(&path, "%.*s.sdk/usr/lib", (int)(pos - sdkroot + 11), sdkroot);
+        cstr_printf(&path, "%.*s.sdk/usr/lib", (int)(pos - xcode_select_sdkroot + 11), xcode_select_sdkroot);
     /* must use free from libc directly */
-#pragma push_macro("free")
-#undef free
-    free(sdkroot);
-#pragma pop_macro("free")
+// #pragma push_macro("free")
+// #undef free
+//     free(xcode_select_sdkroot);
+// #pragma pop_macro("free")
     if (path.size)
         tcc_add_library_path(s, (char*)path.data);
     else
