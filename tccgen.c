@@ -3960,6 +3960,13 @@ redo:
             ad->section = find_section(tcc_state, astr);
             skip(')');
             break;
+        case TOK_DEPRECATED1: 
+            if (tok == '(') {
+                next();
+                parse_mult_str("deprecated message");
+                skip(')');
+            }
+            break;
         case TOK_ALIAS1:
         case TOK_ALIAS2:
             skip('(');
