@@ -4518,6 +4518,9 @@ do_decl:
                 if (v < TOK_UIDENT)
                     expect("identifier");
                 next();
+                if (tok == TOK_ATTRIBUTE1 || tok == TOK_ATTRIBUTE2) {
+                    parse_attribute(&ad1);
+                }
                 if (tok == '=') {
                     next();
 		    ll = expr_const64();
