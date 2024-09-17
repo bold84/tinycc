@@ -1414,6 +1414,8 @@ static int parse_include(TCCState *s1, int do_next, int test)
                 pstrcat(buf, sizeof buf, tcc_basename(name));
                 if (tcc_open(s1, buf) >= 0) {
                     break;
+                } else if (test) {
+                    return 0;
                 } else {
                     tcc_error("include file '%s' not found", name);
                 }
