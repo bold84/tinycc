@@ -2268,7 +2268,7 @@ static uint32_t macho_swap32(uint32_t x)
 // dlopen() just once
 char* xcode_select_sdkroot;
 bool xcode_select_loaded = false;
-
+#ifdef TCC_TARGET_MACHO
 ST_FUNC char* tcc_search_darwin_framework(TCCState* s, const char* include_name) {
     // "<Security/Security.h>" 
     //           ^
@@ -2295,6 +2295,7 @@ ST_FUNC char* tcc_search_darwin_framework(TCCState* s, const char* include_name)
 
     return 0;
 }
+#endif
 
 ST_FUNC void tcc_add_macos_framework_path(TCCState* s, const char* framework_name, const char* base_path) {
     char path_buffer[2048];

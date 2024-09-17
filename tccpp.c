@@ -1346,7 +1346,10 @@ search_cached_include(TCCState *s1, const char *filename, int add);
 static int parse_include(TCCState *s1, int do_next, int test)
 {
     int c, i;
-    char name[1024], buf[1024], *darwin_framework_search_path, *p;
+    char name[1024], buf[1024], *p;
+    #ifdef TCC_TARGET_MACHO
+    char *darwin_framework_search_path;
+    #endif
     CachedInclude *e;
 
     c = skip_spaces();
@@ -1402,10 +1405,8 @@ static int parse_include(TCCState *s1, int do_next, int test)
                 p = s1->include_paths[j];
             else if (k < s1->nb_sysinclude_paths)
                 p = s1->sysinclude_paths[k];
-            else if (test)
-                return 0;
-            #ifdef TCC_TARGET_MACHO
-            else if (s1->nb_framework_names > 0 && (darwin_framework_search_path = tcc_search_darwin_framework(s1, (const char*)name))) {
+#ifdef TCC_TARGET_MACHO
+            else if (s1->nb_framework_names > 0 && (darwin_framework_search_path = tcc_search_darwin_framework(s1, name))) {
                 pstrcpy(buf, sizeof buf, darwin_framework_search_path);
                 pstrcat(buf, sizeof buf, tcc_basename(name));
                 if (tcc_open(s1, buf) >= 0) {
@@ -1414,7 +1415,9 @@ static int parse_include(TCCState *s1, int do_next, int test)
                     tcc_error("include file '%s' not found", name);
                 }
             }
-            #endif
+#endif
+            else if (test)
+                return 0;
             else
                 tcc_error("include file '%s' not found", name);
             pstrcpy(buf, sizeof buf, p);
