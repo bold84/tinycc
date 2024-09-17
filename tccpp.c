@@ -1347,9 +1347,11 @@ static int parse_include(TCCState *s1, int do_next, int test)
 {
     int c, i;
     char name[1024], buf[1024], *p;
-    #ifdef TCC_TARGET_MACHO
+#ifdef TCC_TARGET_MACHO
+#ifdef TCC_IS_NATIVE
     char *darwin_framework_search_path;
-    #endif
+#endif
+#endif
     CachedInclude *e;
 
     c = skip_spaces();
@@ -1406,6 +1408,7 @@ static int parse_include(TCCState *s1, int do_next, int test)
             else if (k < s1->nb_sysinclude_paths)
                 p = s1->sysinclude_paths[k];
 #ifdef TCC_TARGET_MACHO
+#ifdef TCC_IS_NATIVE
             else if (s1->nb_framework_names > 0 && (darwin_framework_search_path = tcc_search_darwin_framework(s1, name))) {
                 pstrcpy(buf, sizeof buf, darwin_framework_search_path);
                 pstrcat(buf, sizeof buf, tcc_basename(name));
@@ -1415,6 +1418,7 @@ static int parse_include(TCCState *s1, int do_next, int test)
                     tcc_error("include file '%s' not found", name);
                 }
             }
+#endif
 #endif
             else if (test)
                 return 0;
