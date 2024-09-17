@@ -1077,8 +1077,18 @@ ST_FUNC void relocate_syms(TCCState *s1, Section *symtab, int do_resolve)
                 /* dlsym() needs the undecorated name.  */
                 const char *name_ud = &name[s1->leading_underscore];
                 void *addr = NULL;
-                if (!s1->nostdlib)
+                if (!s1->nostdlib) {
+#ifdef TCC_TARGET_MACHO
+                    addr = dlsym(RTLD_SELF, name_ud);
+                    // System frameworks might need RTLD_DEFAULT on macOS.
+                    if (addr == NULL) {
+                        addr = dlsym(RTLD_DEFAULT, name_ud);
+                    }
+#else
                     addr = dlsym(RTLD_DEFAULT, name_ud);
+#endif
+                }
+#if TARGETOS_OpenBSD || TARGETOS_FreeBSD || TARGETOS_NetBSD || TARGETOS_ANDROID
 		if (addr == NULL) {
 		    int i;
 		    for (i = 0; i < s1->nb_loaded_dlls; i++)
