@@ -2298,18 +2298,34 @@ ST_FUNC char* tcc_search_darwin_framework(TCCState* s, const char* include_name)
 #endif
 
 ST_FUNC void tcc_add_macos_framework_path(TCCState* s, const char* framework_name, const char* base_path) {
+    // if this is a system framework, we need to add it via /System/Library/Frameworks/
     char path_buffer[2048];
-    pstrcpy(path_buffer, sizeof(path_buffer), base_path);
     pstrcat(path_buffer, sizeof(path_buffer), "/System/Library/Frameworks/");
     pstrcat(path_buffer, sizeof(path_buffer), framework_name);
     pstrcat(path_buffer, sizeof(path_buffer), ".framework/");
-    // .tbd
-    pstrcat(path_buffer, sizeof(path_buffer), "Versions/Current/");
     pstrcat(path_buffer, sizeof(path_buffer), framework_name);
-    pstrcat(path_buffer, sizeof(path_buffer), ".tbd");
-    tcc_add_library_path(s, path_buffer);
 
-    // .framework/Headers
+    // Keep it loaded, but only once.
+    void *handle = dlopen(path_buffer, RTLD_GLOBAL | RTLD_LAZY | RTLD_NOLOAD);
+    if (handle) {
+        dlclose(handle);
+    } else {
+        handle = dlopen(path_buffer, RTLD_GLOBAL | RTLD_LAZY);
+    }
+
+    if (!handle) {
+        pstrcpy(path_buffer, sizeof(path_buffer), base_path);
+        pstrcat(path_buffer, sizeof(path_buffer), "/System/Library/Frameworks/");
+        pstrcat(path_buffer, sizeof(path_buffer), framework_name);
+        pstrcat(path_buffer, sizeof(path_buffer), ".framework/");
+        // .tbd
+        pstrcat(path_buffer, sizeof(path_buffer), "Versions/Versions/A/");
+        pstrcat(path_buffer, sizeof(path_buffer), framework_name);
+        pstrcat(path_buffer, sizeof(path_buffer), ".tbd");
+        tcc_add_library_path(s, path_buffer);
+    }
+
+    // The system frameworks don't include headers, so we need to add them separately
     pstrcpy(path_buffer, sizeof(path_buffer), base_path);
     pstrcat(path_buffer, sizeof(path_buffer), "/System/Library/Frameworks/");
     pstrcat(path_buffer, sizeof(path_buffer), framework_name);
