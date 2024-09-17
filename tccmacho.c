@@ -2269,6 +2269,53 @@ static uint32_t macho_swap32(uint32_t x)
 char* xcode_select_sdkroot;
 bool xcode_select_loaded = false;
 
+ST_FUNC char* tcc_search_darwin_framework(TCCState* s, const char* include_name) {
+    // "<Security/Security.h>" 
+    //           ^
+    size_t include_name_length = strlen(include_name);
+    const void* first_slash_identifying_framework_name_in_include_ptr = memchr(include_name, '/', include_name_length);
+    if (first_slash_identifying_framework_name_in_include_ptr == NULL) {
+        return 0;
+    }
+    size_t first_slash_identifying_framework_name_in_include_index = (const char*)first_slash_identifying_framework_name_in_include_ptr - include_name;
+    size_t framework_name_length = first_slash_identifying_framework_name_in_include_index;
+    if (framework_name_length == 0) {
+        return 0;
+    }
+
+    for (int i = 0; i < s->nb_framework_names; i++) {
+        const char* current_framework_name = s->framework_names[i];
+        if (strlen(current_framework_name) != framework_name_length) {
+            continue;
+        }
+        if (strncmp(include_name, current_framework_name, framework_name_length) == 0) {
+            return s->framework_search_paths[i];
+        }
+    }
+
+    return 0;
+}
+
+ST_FUNC void tcc_add_macos_framework_path(TCCState* s, const char* framework_name, const char* base_path) {
+    char path_buffer[2048];
+    pstrcpy(path_buffer, sizeof(path_buffer), base_path);
+    pstrcat(path_buffer, sizeof(path_buffer), "/System/Library/Frameworks/");
+    pstrcat(path_buffer, sizeof(path_buffer), framework_name);
+    pstrcat(path_buffer, sizeof(path_buffer), ".framework/");
+    // .tbd
+    pstrcat(path_buffer, sizeof(path_buffer), "Versions/Current/");
+    pstrcat(path_buffer, sizeof(path_buffer), framework_name);
+    pstrcat(path_buffer, sizeof(path_buffer), ".tbd");
+    tcc_add_library_path(s, path_buffer);
+
+    // .framework/Headers
+    pstrcpy(path_buffer, sizeof(path_buffer), base_path);
+    pstrcat(path_buffer, sizeof(path_buffer), "/System/Library/Frameworks/");
+    pstrcat(path_buffer, sizeof(path_buffer), framework_name);
+    pstrcat(path_buffer, sizeof(path_buffer), ".framework/Headers/");
+    dynarray_add(&s->framework_search_paths, &s->nb_framework_search_paths, tcc_strdup(path_buffer));
+}
+
 /* Looks for the active developer SDK set by xcode-select (or the default
    one set during installation.) */
 ST_FUNC void tcc_add_macos_sdkpath(TCCState* s)
@@ -2302,6 +2349,24 @@ ST_FUNC void tcc_add_macos_sdkpath(TCCState* s)
             "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib"
             ":" "/Applications/Xcode.app/Developer/SDKs/MacOSX.sdk/usr/lib"
             );
+
+    if (s->nb_framework_names > 0) {
+        if (xcode_select_sdkroot) {
+            for (int i = 0; i < s->nb_framework_names; i++) {
+               tcc_add_macos_framework_path(s, s->framework_names[i], xcode_select_sdkroot);
+            }
+        } else {
+            if (access("/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk", F_OK) == 0) {
+                for (int i = 0; i < s->nb_framework_names; i++) {
+                    tcc_add_macos_framework_path(s, s->framework_names[i], "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk");
+                }
+            } else if (access("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk", F_OK) == 0) {
+                for (int i = 0; i < s->nb_framework_names; i++) {
+                    tcc_add_macos_framework_path(s, s->framework_names[i], "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk");
+                }
+            }
+        }
+    }
     cstr_free(&path);
 }
 

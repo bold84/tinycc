@@ -944,6 +944,8 @@ LIBTCCAPI void tcc_delete(TCCState *s1)
     tcc_free(s1->deps_outfile);
 #if defined TCC_TARGET_MACHO
     tcc_free(s1->install_name);
+    dynarray_reset(&s1->framework_names, &s1->nb_framework_names);
+    dynarray_reset(&s1->framework_search_paths, &s1->nb_framework_search_paths);
 #endif
     dynarray_reset(&s1->files, &s1->nb_files);
     dynarray_reset(&s1->target_deps, &s1->nb_target_deps);
@@ -1551,6 +1553,7 @@ enum {
     TCC_OPTION_mfloat_abi,
     TCC_OPTION_m,
     TCC_OPTION_f,
+    TCC_OPTION_framework,
     TCC_OPTION_isystem,
     TCC_OPTION_iwithprefix,
     TCC_OPTION_include,
@@ -1575,6 +1578,7 @@ enum {
     /* macho */
     TCC_OPTION_dynamiclib,
     TCC_OPTION_flat_namespace,
+    TCC_OPTION_framework,
     TCC_OPTION_two_levelnamespace,
     TCC_OPTION_undefined,
     TCC_OPTION_install_name,
@@ -1636,6 +1640,7 @@ static const TCCOption tcc_options[] = {
     { "current_version", TCC_OPTION_current_version, TCC_OPTION_HAS_ARG },
     { "dynamiclib", TCC_OPTION_dynamiclib, 0 },
     { "flat_namespace", TCC_OPTION_flat_namespace, 0 },
+    { "framework", TCC_OPTION_framework, TCC_OPTION_HAS_ARG },
     { "install_name", TCC_OPTION_install_name, TCC_OPTION_HAS_ARG },
     { "two_levelnamespace", TCC_OPTION_two_levelnamespace, 0 },
     { "undefined", TCC_OPTION_undefined, TCC_OPTION_HAS_ARG },
@@ -2031,6 +2036,9 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
             s->option_r = 1;
             x = TCC_OUTPUT_OBJ;
             goto set_output_type;
+        case TCC_OPTION_framework:
+            dynarray_add(&s->framework_names, &s->nb_framework_names, tcc_strdup(optarg));
+            break;
         case TCC_OPTION_isystem:
             tcc_add_sysinclude_path(s, optarg);
             break;
@@ -2168,6 +2176,9 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
             goto set_output_type;
         case TCC_OPTION_flat_namespace:
 	     break;
+        case TCC_OPTION_framework:
+            dynarray_add(&s->framework_names, &s->nb_framework_names, tcc_strdup(optarg));
+            break;
         case TCC_OPTION_two_levelnamespace:
 	     break;
         case TCC_OPTION_undefined:
