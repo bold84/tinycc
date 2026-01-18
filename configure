@@ -57,7 +57,8 @@ build_cross=
 # use CC/AR from environment when set
 test -n "$CC" && cc="$CC"
 test -n "$AR" && ar="$AR"
-
+# host_cc defaults to cc (which may have been overridden by $CC above)
+host_cc="${CC:-$cc}"
 # set default CFLAGS if unset in environment
 test -z "$CFLAGS" && CFLAGS="-Wall -O2"
 
