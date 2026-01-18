@@ -1088,7 +1088,6 @@ ST_FUNC void relocate_syms(TCCState *s1, Section *symtab, int do_resolve)
                     addr = dlsym(RTLD_DEFAULT, name_ud);
 #endif
                 }
-#if TARGETOS_OpenBSD || TARGETOS_FreeBSD || TARGETOS_NetBSD || TARGETOS_ANDROID
 		if (addr == NULL) {
 		    int i;
 		    for (i = 0; i < s1->nb_loaded_dlls; i++)

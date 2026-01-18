@@ -1553,7 +1553,6 @@ enum {
     TCC_OPTION_mfloat_abi,
     TCC_OPTION_m,
     TCC_OPTION_f,
-    TCC_OPTION_framework,
     TCC_OPTION_isystem,
     TCC_OPTION_iwithprefix,
     TCC_OPTION_include,
@@ -2036,11 +2035,6 @@ PUB_FUNC int tcc_parse_args(TCCState *s, int *pargc, char ***pargv)
             s->option_r = 1;
             x = TCC_OUTPUT_OBJ;
             goto set_output_type;
-        case TCC_OPTION_framework:
-#ifdef TCC_TARGET_MACHO
-            dynarray_add(&s->framework_names, &s->nb_framework_names, tcc_strdup(optarg));
-#endif
-            break;
         case TCC_OPTION_isystem:
             tcc_add_sysinclude_path(s, optarg);
             break;
