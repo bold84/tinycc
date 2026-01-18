@@ -85,6 +85,23 @@ jobs:
         .\tcc -I.. libtcc.dll -v ../tests/libtcc_test.c -o libtest.exe && .\libtest.exe
         .\tcc -I.. libtcc.dll -run ../tests/libtcc_test.c
 
+  test-aarch64-win32:
+    runs-on: windows-11-arm64
+    timeout-minutes: 6
+    steps:
+    - uses: actions/checkout@v4
+    - uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: arm64
+    - name: build & test tcc (aarch64-win32)
+      shell: cmd
+      run: |
+        echo ::group:: build with clang
+        cd win32
+        call build-tcc.bat -t arm64 -c clang
+        echo ::endgroup::
+        .\tcc -v
+
   test-armv7-linux:
     runs-on: ubuntu-22.04
     timeout-minutes: 8

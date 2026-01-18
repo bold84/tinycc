@@ -310,6 +310,7 @@ CROSS-TGTS = \
  arm-wince \
  arm64 \
  arm64-osx \
+ arm64-win32 \
  arm64-FreeBSD \
  arm64-NetBSD \
  arm64-OpenBSD \
