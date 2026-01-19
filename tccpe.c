@@ -136,7 +136,7 @@ typedef struct _IMAGE_OPTIONAL_HEADER {
     DWORD   SizeOfUninitializedData;
     DWORD   AddressOfEntryPoint;
     DWORD   BaseOfCode;
-#ifndef TCC_TARGET_X86_64
+#if !defined(TCC_TARGET_X86_64) && !defined(TCC_TARGET_ARM64)
     DWORD   BaseOfData;
 #endif
     /* NT additional fields. */
