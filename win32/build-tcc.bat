@@ -180,6 +180,8 @@ if exist libtcc.dll .\tcc -impdef libtcc.dll -o libtcc\libtcc.def
 @if errorlevel 1 goto :the_end
 
 :lib
+@rem Skip lib building for ARM64 - tcc's ARM64 assembler is not implemented
+if %T%==arm64 goto :files_done
 call :make_lib %T% || goto :the_end
 @if exist %PX%-tcc.exe call :make_lib %TX% %PX%- || goto :the_end
 
