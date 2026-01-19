@@ -119,6 +119,8 @@ goto :p3
 :tarm64
 set D=%DARM64%
 set P=%PARM64%
+@rem ARM64 with clang: use single-source build (lld-link can't link DLL directly)
+set TCC_C=..\tcc.c
 goto :p3
 
 :p3
