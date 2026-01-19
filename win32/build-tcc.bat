@@ -94,9 +94,12 @@ if (%BINDIR%)==() set BINDIR=%TCCDIR%
 
 set D32=-DTCC_TARGET_PE -DTCC_TARGET_I386
 set D64=-DTCC_TARGET_PE -DTCC_TARGET_X86_64
+set DARM64=-DTCC_TARGET_PE -DTCC_TARGET_ARM64
 set P32=i386-win32
 set P64=x86_64-win32
+set PARM64=arm64-win32
 
+if %T%==arm64 goto :tarm64
 if %T%==64 goto :t64
 set D=%D32%
 set P=%P32%
@@ -111,6 +114,11 @@ set P=%P64%
 set DX=%D32%
 set PX=%P32%
 set TX=32
+goto :p3
+
+:tarm64
+set D=%DARM64%
+set P=%PARM64%
 goto :p3
 
 :p3
