@@ -133,12 +133,14 @@ if %ERRORLEVEL%==1 set GITHASH=%GITHASH%*
 
 :config.h
 echo>..\config.h #define TCC_VERSION "%VERSION%"
-if not (%GITHASH%)==() echo>> ..\config.h #define TCC_GITHASH "%GITHASH%"
+if not "%GITHASH%"=="" echo>> ..\config.h #define TCC_GITHASH "%GITHASH%"
 @if not (%BINDIR%)==(%TCCDIR%) echo>> ..\config.h #define CONFIG_TCCDIR "%TCCDIR:\=/%"
+if "%TX%"=="" goto :skip_cross
 if %TX%==64 echo>> ..\config.h #ifdef TCC_TARGET_X86_64
 if %TX%==32 echo>> ..\config.h #ifdef TCC_TARGET_I386
 echo>> ..\config.h #define CONFIG_TCC_CROSSPREFIX "%PX%-"
 echo>> ..\config.h #endif
+:skip_cross
 
 @rem echo>> ..\config.h #define CONFIG_TCC_PREDEFS 1
 @rem %CC% -DC2STR ..\conftest.c -o c2str.exe
