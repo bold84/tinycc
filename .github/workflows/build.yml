@@ -86,7 +86,7 @@ jobs:
         .\tcc -I.. libtcc.dll -run ../tests/libtcc_test.c
 
   test-aarch64-win32:
-    runs-on: windows-11-arm64
+    runs-on: windows-11-arm
     timeout-minutes: 6
     steps:
     - uses: actions/checkout@v4
