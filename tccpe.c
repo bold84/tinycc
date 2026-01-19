@@ -50,6 +50,16 @@
 # define IMAGE_FILE_MACHINE 0x01C0
 # define RSRC_RELTYPE 7 /* ??? (not tested) */
 
+#elif defined TCC_TARGET_ARM64
+# define ADDR3264 ULONGLONG
+# define PE_IMAGE_REL IMAGE_REL_BASED_DIR64
+# define REL_TYPE_DIRECT R_AARCH64_ABS64
+# define R_XXX_THUNKFIX R_AARCH64_ABS64
+# define R_XXX_RELATIVE R_AARCH64_RELATIVE
+# define R_XXX_FUNCCALL R_AARCH64_CALL26
+# define IMAGE_FILE_MACHINE 0xAA64
+# define RSRC_RELTYPE 3
+
 #elif defined TCC_TARGET_I386
 # define ADDR3264 DWORD
 # define PE_IMAGE_REL IMAGE_REL_BASED_HIGHLOW
@@ -261,7 +271,7 @@ struct pe_header
     BYTE dosstub[0x40];
     DWORD nt_sig;
     IMAGE_FILE_HEADER filehdr;
-#ifdef TCC_TARGET_X86_64
+#if defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
     IMAGE_OPTIONAL_HEADER64 opthdr;
 #else
 #ifdef _WIN64
@@ -605,11 +615,15 @@ static int pe_write(struct pe_info *pe)
     0x00E0, /*WORD    SizeOfOptionalHeader; */
     0x010F, /*WORD    Characteristics; */
 #define CHARACTERISTICS_DLL 0x230F
+#elif defined(TCC_TARGET_ARM64)
+    0x00F0, /*WORD    SizeOfOptionalHeader; */
+    0x022F  /*WORD    Characteristics; */
+#define CHARACTERISTICS_DLL 0x222E
 #endif
 },{
     /* IMAGE_OPTIONAL_HEADER opthdr */
     /* Standard fields. */
-#ifdef TCC_TARGET_X86_64
+#if defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
     0x020B, /*WORD    Magic; */
 #else
     0x010B, /*WORD    Magic; */
@@ -621,7 +635,7 @@ static int pe_write(struct pe_info *pe)
     0x00000000, /*DWORD   SizeOfUninitializedData; */
     0x00000000, /*DWORD   AddressOfEntryPoint; */
     0x00000000, /*DWORD   BaseOfCode; */
-#ifndef TCC_TARGET_X86_64
+#if !defined(TCC_TARGET_X86_64) && !defined(TCC_TARGET_ARM64)
     0x00000000, /*DWORD   BaseOfData; */
 #endif
     /* NT additional fields. */
@@ -702,7 +716,7 @@ static int pe_write(struct pe_info *pe)
                 break;
 
             case sec_data:
-#ifndef TCC_TARGET_X86_64
+#if !defined(TCC_TARGET_X86_64) && !defined(TCC_TARGET_ARM64)
                 if (!pe_header.opthdr.BaseOfData)
                     pe_header.opthdr.BaseOfData = addr;
 #endif
@@ -1380,13 +1394,21 @@ static int pe_check_symbols(struct pe_info *pe)
                     write32le(p + 4, 0xE59CF000); // arm code ldr pc, [ip]
                     put_elf_reloc(symtab_section, text_section,
                         offset + 8, R_XXX_THUNKFIX, is->iat_index); // offset to IAT position
+#elif defined TCC_TARGET_ARM64
+                    p = section_ptr_add(text_section, 16);
+                    /* ldr x16, [pc, #8] */
+                    write32le(p + 0, 0x58000050);
+                    /* br x16 */
+                    write32le(p + 4, 0xd61f0200);
+                    put_elf_reloc(symtab_section, text_section,
+                        offset + 8, R_XXX_THUNKFIX, is->iat_index);
 #else
                     p = section_ptr_add(text_section, 8);
                     write16le(p, 0x25FF);
 #ifdef TCC_TARGET_X86_64
                     write32le(p + 2, (DWORD)-4);
 #endif
-                    put_elf_reloc(symtab_section, text_section, 
+                    put_elf_reloc(symtab_section, text_section,
                         offset + 2, R_XXX_THUNKFIX, is->iat_index);
 #endif
                 }
@@ -1893,9 +1915,75 @@ ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
     for (n = o + sizeof *p; o < n; o += sizeof p->BeginAddress)
         put_elf_reloc(symtab_section, pd, o, R_XXX_RELATIVE, s1->uw_sym);
 }
+#elif defined TCC_TARGET_ARM64
+/* ARM64 unwind codes:
+   save_fplr_x: 10iiiiii  - stp x29,lr,[sp,#-(i+1)*8]!
+   set_fp:      11100001  - mov x29,sp
+   alloc_s:     000iiiii  - sub sp,sp,#i*16 (up to 496 bytes)
+   alloc_m:     11000iii xxxxxxxx - sub sp,sp,#X*16 (up to 32KB)
+   end:         11100100  - end of unwind codes
+*/
+static unsigned pe_add_uwwind_info(TCCState *s1)
+{
+    if (NULL == s1->uw_pdata) {
+        s1->uw_pdata = find_section(s1, ".pdata");
+        s1->uw_pdata->sh_addralign = 4;
+    }
+    if (0 == s1->uw_sym)
+        s1->uw_sym = put_elf_sym(symtab_section, 0, 0, 0, 0,
+                                  text_section->sh_num, ".uw_base");
+    if (0 == s1->uw_offs) {
+        /* TCC ARM64 prolog: stp x29,lr,[sp,#-224]!; mov x29,sp; sub sp,sp,#N
+           Unwind codes (reverse order): alloc_s, set_fp, save_fplr_x, end */
+        static const unsigned char uw_info[] = {
+            /* .xdata header word 0:
+               FunctionLength[17:0]=0 (patched), Vers[1:0]=0, X=0, E=1,
+               EpilogCount[4:0]=0, CodeWords[4:0]=1 */
+            0x00, 0x00, 0x00, 0x01,
+            /* Unwind codes (4 bytes, padded): */
+            0xE1,       /* set_fp: mov x29,sp */
+            0x9B,       /* save_fplr_x: stp x29,lr,[sp,#-224]! (224/8-1=27=0x1B) */
+            0xE4,       /* end */
+            0xE3,       /* nop (padding) */
+        };
+
+        Section *s = text_section;
+        unsigned char *p;
+
+        section_ptr_add(s, -s->data_offset & 3); /* align */
+        s1->uw_offs = s->data_offset;
+        p = section_ptr_add(s, sizeof uw_info);
+        memcpy(p, uw_info, sizeof uw_info);
+    }
+    return s1->uw_offs;
+}
+
+ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
+{
+    TCCState *s1 = tcc_state;
+    Section *pd;
+    unsigned o, n, d;
+    struct {
+        DWORD BeginAddress;
+        DWORD EndAddress;
+        DWORD UnwindData;
+    } *p;
+
+    d = pe_add_uwwind_info(s1);
+    pd = s1->uw_pdata;
+    o = pd->data_offset;
+    p = section_ptr_add(pd, sizeof *p);
+
+    p->BeginAddress = start;
+    p->EndAddress = end;
+    p->UnwindData = d;
+
+    for (n = o + sizeof *p; o < n; o += sizeof p->BeginAddress)
+        put_elf_reloc(symtab_section, pd, o, R_XXX_RELATIVE, s1->uw_sym);
+}
 #endif
 /* ------------------------------------------------------------- */
-#ifdef TCC_TARGET_X86_64
+#if defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
 #define PE_STDSYM(n,s) n
 #else
 #define PE_STDSYM(n,s) "_" n s
@@ -1991,7 +2079,7 @@ static void pe_add_runtime(TCCState *s1, struct pe_info *pe)
 ST_FUNC int pe_setsubsy(TCCState *s1, const char *arg)
 {
     static const struct subsy { const char* p; int v; } x[] = {
-#if defined(TCC_TARGET_I386) || defined(TCC_TARGET_X86_64)
+#if defined(TCC_TARGET_I386) || defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
         { "native", 1 },
         { "gui", 2 },
         { "windows", 2 },
@@ -2098,7 +2186,7 @@ ST_FUNC int pe_output_file(TCCState *s1, const char *filename)
         pe.thunk = data_section;
         pe_build_imports(&pe);
         s1->run_main = pe.start_symbol;
-#ifdef TCC_TARGET_X86_64
+#if defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
         s1->uw_pdata = find_section(s1, ".pdata");
 #endif
 #endif

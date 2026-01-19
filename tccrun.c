@@ -1201,7 +1201,11 @@ static int rt_error(rt_frame *f, const char *fmt, ...)
 /* translate from ucontext_t* to internal rt_context * */
 static void rt_getcontext(ucontext_t *uc, rt_frame *rc)
 {
-#if defined _WIN64
+#if defined _WIN64 && defined __aarch64__
+    rc->ip = uc->Pc;
+    rc->fp = uc->Fp;
+    rc->sp = uc->Sp;
+#elif defined _WIN64
     rc->ip = uc->Rip;
     rc->fp = uc->Rbp;
     rc->sp = uc->Rsp;

@@ -12,18 +12,29 @@
 #ifdef TARGET_DEFS_ONLY
 
 // Number of registers available to allocator:
+#ifdef TCC_TARGET_PE
+#define NB_REGS 27 // x0-x17, x30, v0-v7 (x18 reserved on Windows)
+#define TREG_R(x) (x) // x = 0..17
+#define TREG_R30  18
+#define TREG_F(x) (x + 19) // x = 0..7
+#define RC_INT (1 << 0)
+#define RC_FLOAT (1 << 1)
+#define RC_R(x) (1 << (2 + (x))) // x = 0..17
+#define RC_R30  (1 << 20)
+#define RC_F(x) (1 << (21 + (x))) // x = 0..7
+#else
 #define NB_REGS 28 // x0-x18, x30, v0-v7
-
 #define TREG_R(x) (x) // x = 0..18
 #define TREG_R30  19
 #define TREG_F(x) (x + 20) // x = 0..7
-
-// Register classes sorted from more general to more precise:
 #define RC_INT (1 << 0)
 #define RC_FLOAT (1 << 1)
 #define RC_R(x) (1 << (2 + (x))) // x = 0..18
 #define RC_R30  (1 << 21)
 #define RC_F(x) (1 << (22 + (x))) // x = 0..7
+#endif
+
+// Register classes sorted from more general to more precise:
 
 #define RC_IRET (RC_R(0)) // int return register class
 #define RC_FRET (RC_F(0)) // float return register class
@@ -79,7 +90,9 @@ ST_DATA const int reg_classes[NB_REGS] = {
   RC_INT | RC_R(15),
   RC_INT | RC_R(16),
   RC_INT | RC_R(17),
+#ifndef TCC_TARGET_PE
   RC_INT | RC_R(18),
+#endif
   RC_R30, // not in RC_INT as we make special use of x30
   RC_FLOAT | RC_F(0),
   RC_FLOAT | RC_F(1),
@@ -1508,6 +1521,13 @@ ST_FUNC void gfunc_epilog(void)
     o(0xa8ce7bfd); // ldp x29,x30,[sp],#224
 
     o(0xd65f03c0); // ret
+
+#ifdef TCC_TARGET_PE
+    {
+        unsigned start = arm64_func_sub_sp_offset - 8; /* account for prolog size */
+        pe_add_unwind_data(start, ind, -loc);
+    }
+#endif
 }
 
 ST_FUNC void gen_fill_nops(int bytes)
