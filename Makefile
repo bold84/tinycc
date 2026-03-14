@@ -33,8 +33,9 @@ ifdef CONFIG_WIN32
  ifneq ($(CONFIG_debug),yes)
   LDFLAGS += -s
  endif
- NATIVE_TARGET = $(ARCH)-win$(if $(findstring arm,$(ARCH)),ce,32)
+ NATIVE_TARGET = $(ARCH)-win$(if $(findstring arm64,$(ARCH)),32,$(if $(findstring arm,$(ARCH)),ce,32))
 else
+
  CFG = -unx
  LIBS+=-lm
  ifneq ($(CONFIG_ldl),no)
