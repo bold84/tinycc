@@ -273,8 +273,23 @@ typedef struct _IMAGE_BASE_RELOCATION {
 #endif /* ndef IMAGE_NT_SIGNATURE */
 /* ----------------------------------------------------------- */
 
+#ifndef IMAGE_FILE_MACHINE_ARM64
+#define IMAGE_FILE_MACHINE_ARM64 0xAA64
+#endif
 #ifndef IMAGE_REL_BASED_DIR64
 # define IMAGE_REL_BASED_DIR64 10
+#endif
+#ifndef IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA
+#define IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA 0x0020
+#endif
+#ifndef IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE
+#define IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE 0x0040
+#endif
+#ifndef IMAGE_DLLCHARACTERISTICS_NX_COMPAT
+#define IMAGE_DLLCHARACTERISTICS_NX_COMPAT 0x0100
+#endif
+#ifndef IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE
+#define IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE 0x8000
 #endif
 
 #pragma pack(push, 1)
@@ -1673,7 +1688,7 @@ static int get_dllexports(int fd, char **pp)
         if (IMAGE_DIRECTORY_ENTRY_EXPORT >= oh.NumberOfRvaAndSizes)
             goto the_end_0;
         addr = oh.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
-    } else if (ih.Machine == 0x8664) {
+    } else if (ih.Machine == 0x8664 || ih.Machine == IMAGE_FILE_MACHINE_ARM64) {
         IMAGE_OPTIONAL_HEADER64 oh;
         sec_hdroffset = opt_hdroffset + sizeof oh;
         if (!read_mem(fd, opt_hdroffset, &oh, sizeof oh))

@@ -242,8 +242,23 @@ ST_FUNC void relocate(TCCState *s1, ElfW_Rel *rel, int type, unsigned char *ptr,
             return;
         case R_AARCH64_ADR_PREL_PG_HI21: {
             uint64_t off = (val >> 12) - (addr >> 12);
+#ifdef TCC_TARGET_PE
+            /* Weak undefined symbols resolve to address 0 on PE. ADRP cannot
+               encode that from the default 64-bit image base, so materialize
+               zero directly and let the paired ADD handle any low addend. */
+            if ((off + ((uint64_t)1 << 20)) >> 21) {
+                ElfW(Sym) *sym = &((ElfW(Sym) *)symtab_section->data)[sym_index];
+                if (sym->st_shndx == SHN_UNDEF
+                    && ELFW(ST_BIND)(sym->st_info) == STB_WEAK) {
+                    write32le(ptr, 0xd2800000 | (read32le(ptr) & 0x1f));
+                    return;
+                }
+                tcc_error_noabort("R_AARCH64_ADR_PREL_PG_HI21 relocation failed");
+            }
+#else
             if ((off + ((uint64_t)1 << 20)) >> 21)
                 tcc_error_noabort("R_AARCH64_ADR_PREL_PG_HI21 relocation failed");
+#endif
             write32le(ptr, ((read32le(ptr) & 0x9f00001f) |
                             (off & 0x1ffffc) << 3 | (off & 3) << 29));
             return;
@@ -295,13 +310,22 @@ ST_FUNC void relocate(TCCState *s1, ElfW_Rel *rel, int type, unsigned char *ptr,
             return;
         case R_AARCH64_JUMP26:
         case R_AARCH64_CALL26:
+        {
+            const char *name;
 #ifdef DEBUG_RELOC
      printf ("reloc %d @ 0x%lx: val=0x%lx name=%s\n", type, addr, val,
       (char *) symtab_section->link->data + sym->st_name);
 #endif
             if (((val - addr) + ((uint64_t)1 << 27)) & ~(uint64_t)0xffffffc) {
-                const char *name =
-                    (char *)symtab_section->link->data +
+#ifdef TCC_TARGET_PE
+                ElfW(Sym) *sym = &((ElfW(Sym) *)symtab_section->data)[sym_index];
+                if (sym->st_shndx == SHN_UNDEF
+                    && ELFW(ST_BIND)(sym->st_info) == STB_WEAK) {
+                    write32le(ptr, 0xd503201f); /* nop */
+                    return;
+                }
+#endif
+                name = (char *)symtab_section->link->data +
                     ((ElfW(Sym) *)symtab_section->data)[sym_index].st_name;
                 tcc_error_noabort("R_AARCH64_(JUMP|CALL)26 relocation failed"
                           " for '%s' (val=%lx, addr=%lx)",
@@ -311,6 +335,7 @@ ST_FUNC void relocate(TCCState *s1, ElfW_Rel *rel, int type, unsigned char *ptr,
                             (uint32_t)(type == R_AARCH64_CALL26) << 31 |
                             ((val - addr) >> 2 & 0x3ffffff)));
             return;
+        }
         case R_AARCH64_ADR_GOT_PAGE: {
             uint64_t off =
                 (((s1->got->sh_addr +

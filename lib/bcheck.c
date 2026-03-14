@@ -906,7 +906,11 @@ static void __bound_long_jump(jmp_buf env, int val, int sig, const char *func)
 #if !defined(_WIN32)
     sig ? siglongjmp(env, val) :
 #endif
+#if defined(_WIN32) && defined(__aarch64__)
+    __mingw_longjmp(env, val);
+#else
     longjmp (env, val);
+#endif
 }
 
 void __bound_longjmp(jmp_buf env, int val)
@@ -1159,7 +1163,7 @@ __bound_main_arg(int argc, char **argv, char **envp)
     }
 }
 
-void __attribute__((destructor)) __bound_exit(void)
+static void bound_exit_impl(void)
 {
     int i;
     static const char * const alloc_type[] = {
@@ -1269,6 +1273,11 @@ void __attribute__((destructor)) __bound_exit(void)
 #endif
         }
     }
+}
+
+void __attribute__((destructor)) __bound_exit(void)
+{
+    bound_exit_impl();
 }
 
 void __bound_exit_dll(size_t *p)

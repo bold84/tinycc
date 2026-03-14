@@ -356,10 +356,12 @@
      DEF(TOK_sigsetjmp, "sigsetjmp")
      DEF(TOK___sigsetjmp, "__sigsetjmp")
      DEF(TOK_siglongjmp, "siglongjmp")
-# endif
+  # endif
      DEF(TOK_setjmp, "setjmp")
      DEF(TOK__setjmp, "_setjmp")
+     DEF(TOK___mingw_setjmp, "__mingw_setjmp")
      DEF(TOK_longjmp, "longjmp")
+     DEF(TOK___mingw_longjmp, "__mingw_longjmp")
 #endif
 
 

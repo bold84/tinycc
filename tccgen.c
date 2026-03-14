@@ -1691,6 +1691,7 @@ ST_FUNC void gbound_args(int nb_args)
         v = sv->sym->v;
         if (v == TOK_setjmp
           || v == TOK__setjmp
+          || v == TOK___mingw_setjmp
 #ifndef TCC_TARGET_PE
           || v == TOK_sigsetjmp
           || v == TOK___sigsetjmp

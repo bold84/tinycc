@@ -651,6 +651,25 @@ static int rt_printf(const char *fmt, ...)
     return r;
 }
 
+static const char *rt_backtrace_format(const char *fmt, char *skip, int *one)
+{
+    const char *a, *b;
+
+    skip[0] = 0;
+    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
+        size_t len = b - a;
+        if (len >= 40)
+            len = 39;
+        memcpy(skip, a, len);
+        skip[len] = 0;
+        fmt = b + 1;
+    }
+    *one = 0;
+    if (fmt[0] == '\001')
+        ++fmt, *one = 1;
+    return fmt;
+}
+
 static char *rt_elfsym(rt_context *rc, addr_t wanted_pc, addr_t *func_addr)
 {
     ElfW(Sym) *esym;
@@ -1083,27 +1102,17 @@ found:
 #ifndef CONFIG_TCC_BACKTRACE_ONLY
 static
 #endif
-int _tcc_backtrace(rt_frame *f, const char *fmt, va_list ap)
+int _tcc_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
 {
     rt_context *rc, *rc2;
     addr_t pc;
-    char skip[40], msg[200];
+    char skip[40];
     int i, level, ret, n, one;
-    const char *a, *b;
+    const char *a;
     bt_info bi;
     addr_t (*getinfo)(rt_context*, addr_t, bt_info*);
 
-    skip[0] = 0;
-    /* If fmt is like "^file.c^..." then skip calls from 'file.c' */
-    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
-        memcpy(skip, a, b - a), skip[b - a] = 0;
-        fmt = b + 1;
-    }
-    one = 0;
-    /* hack for bcheck.c:dprintf(): one level, no newline */
-    if (fmt[0] == '\001')
-        ++fmt, one = 1;
-    vsnprintf(msg, sizeof msg, fmt, ap);
+    rt_backtrace_format(fmt, skip, &one);
 
     rt_wait_sem();
     rc = g_rc;
@@ -1174,6 +1183,21 @@ int _tcc_backtrace(rt_frame *f, const char *fmt, va_list ap)
     }
     rt_post_sem();
     return 0;
+}
+
+#ifndef CONFIG_TCC_BACKTRACE_ONLY
+static
+#endif
+int _tcc_backtrace(rt_frame *f, const char *fmt, va_list ap)
+{
+    char msg[200];
+    char skip[40];
+    int one;
+    const char *fmt0 = fmt;
+
+    fmt = rt_backtrace_format(fmt, skip, &one);
+    vsnprintf(msg, sizeof msg, fmt, ap);
+    return _tcc_backtrace_msg(f, fmt0, msg);
 }
 
 /* emit a run time error at position 'pc' */
@@ -1371,6 +1395,10 @@ static void set_exception_handler(void)
 
 #else /* WIN32 */
 
+#ifdef CONFIG_TCC_BACKTRACE_ONLY
+static PVOID rt_exception_handler;
+#endif
+
 /* signal handler for fatal errors */
 static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
 {
@@ -1404,6 +1432,10 @@ static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
 /* Generate a stack backtrace when a CPU exception occurs. */
 static void set_exception_handler(void)
 {
+#ifdef CONFIG_TCC_BACKTRACE_ONLY
+    if (!rt_exception_handler)
+        rt_exception_handler = AddVectoredExceptionHandler(1, cpu_exception_handler);
+#endif
     SetUnhandledExceptionFilter(cpu_exception_handler);
 }
 

@@ -8,6 +8,7 @@
 #define REDIR_ALL \
   REDIR(__bt_init) \
   REDIR(__bt_exit) \
+  REDIR(__bt_backtrace) \
   REDIR(tcc_backtrace) \
   \
   REDIR(__bound_ptr_add) \
@@ -51,6 +52,9 @@ static const char all_names[] = REDIR_ALL;
 #undef REDIR
 #if defined(__aarch64__)
 typedef struct rt_context rt_context;
+typedef struct rt_frame {
+    void *ip, *fp, *sp;
+} rt_frame;
 #ifndef FASTCALL
 #define FASTCALL
 #endif
@@ -69,6 +73,8 @@ REDIR_WRAP(void, __bt_init, (rt_context *p, int is_exe),
            (rt_context *, int), (p, is_exe))
 REDIR_WRAP(void, __bt_exit, (rt_context *p),
            (rt_context *), (p))
+REDIR_WRAP(int, __bt_backtrace, (rt_frame *f, const char *msg),
+           (rt_frame *, const char *), (f, msg))
 
 void * __bound_ptr_add(void *p, size_t offset)
 {
@@ -128,13 +134,16 @@ REDIR_WRAP(char *, __bound_strdup, (const char *s),
 int tcc_backtrace(const char *fmt, ...)
 {
     char buf[1024];
+    rt_frame f;
     va_list ap;
-    typedef int (*fn_t)(const char *, ...);
 
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-    return ((fn_t)all_ptrs.tcc_backtrace)("%s", buf);
+    f.ip = __builtin_return_address(0);
+    f.fp = __builtin_frame_address(1);
+    f.sp = __builtin_frame_address(0);
+    return __bt_backtrace(&f, buf);
 }
 
 #undef REDIR_PTR_INDIR
