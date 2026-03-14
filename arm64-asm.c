@@ -185,6 +185,28 @@ static int parse_condition(int t)
     }
 }
 
+static int parse_barrier_option_name(int t)
+{
+    const char *name;
+
+    if (t < TOK_IDENT)
+        return -1;
+    name = get_tok_str(t, NULL);
+    if (!strcmp(name, "oshld")) return 0x1;
+    if (!strcmp(name, "oshst")) return 0x2;
+    if (!strcmp(name, "osh"))   return 0x3;
+    if (!strcmp(name, "nshld")) return 0x5;
+    if (!strcmp(name, "nshst")) return 0x6;
+    if (!strcmp(name, "nsh"))   return 0x7;
+    if (!strcmp(name, "ishld")) return 0x9;
+    if (!strcmp(name, "ishst")) return 0xA;
+    if (!strcmp(name, "ish"))   return 0xB;
+    if (!strcmp(name, "ld"))    return 0xD;
+    if (!strcmp(name, "st"))    return 0xE;
+    if (!strcmp(name, "sy"))    return 0xF;
+    return -1;
+}
+
 /* Parse a single operand */
 static void parse_operand(TCCState *s1, Operand *op)
 {
@@ -227,9 +249,6 @@ static void parse_operand(TCCState *s1, Operand *op)
     }
     asm_expr(s1, &op->e);
     op->type = OP_IM;
-    if (!op->e.sym) {
-        op->e.v = (uint32_t)op->e.v;
-    }
 }
 
 /* Parse address operand in brackets [xn, ...] */
@@ -418,7 +437,7 @@ static void gen_cbnz(int rt, int32_t offset, int is_64bit)
 /* Generate MOV (register) - ORR with zero register */
 static void gen_mov_reg(int rd, int rm, int is_64bit)
 {
-    uint32_t instr = 0xAA0003E0;
+    uint32_t instr = 0x2A0003E0;
     if (is_64bit) instr |= (1 << 31);
     instr |= (rm & 0x1F) << 16;
     instr |= rd & 0x1F;
@@ -556,24 +575,19 @@ static void gen_barrier(int barrier_type, int option)
 
     switch (barrier_type) {
         case 0: /* ISB - Instruction Synchronization Barrier */
-            instr = 0xD503201F;
-            if (option != 0xF) {
-                instr |= (option & 0xF) << 8;
-            }
+            instr = 0xD50330DF;
             break;
         case 1: /* DSB - Data Synchronization Barrier */
-            instr = 0xD503301F;
-            instr |= (option & 0xF) << 8;
+            instr = 0xD503309F;
             break;
         case 2: /* DMB - Data Memory Barrier */
-            instr = 0xD503301F;
-            instr |= 0x00200000; /* DMB opcode */
-            instr |= (option & 0xF) << 8;
+            instr = 0xD50330BF;
             break;
         default:
             tcc_error("unknown barrier type");
             return;
     }
+    instr |= (option & 0xF) << 8;
     emit_instr32(instr);
 }
 
@@ -598,17 +612,25 @@ static void asm_barrier(TCCState *s1, int token)
             return;
     }
 
-    /* Default option = 0xF (full system) */
+    /* Default option = sy/full system. */
     option = 0xF;
 
-    /* Check for optional operand (barrier option) */
+    /* Check for an optional named or numeric barrier scope. */
     if (tok != TOK_LINEFEED) {
-        parse_operand(s1, &op);
-        if (op.type & OP_IM) {
+        option = parse_barrier_option_name(tok);
+        if (option >= 0) {
+            next();
+        } else {
+            parse_operand(s1, &op);
+            if (!(op.type & OP_IM) || op.e.sym) {
+                tcc_error("barrier option must be an immediate or scope name");
+                return;
+            }
+            if (op.e.v > 0xF) {
+                tcc_error("barrier option out of range");
+                return;
+            }
             option = op.e.v;
-        } else if (op.type & OP_REG) {
-            tcc_error("barrier option must be immediate");
-            return;
         }
     }
 
@@ -684,7 +706,7 @@ static void asm_data_proc(TCCState *s1, int token)
             opcode = token == TOK_ASM_and ? 0x0A000000 : 0x2A000000;
             break;
         case TOK_ASM_orr:
-            opcode = 0xAA000000;
+            opcode = 0x2A000000;
             break;
         case TOK_ASM_eor:
             opcode = 0x4A000000;
@@ -740,11 +762,27 @@ static void asm_ldst(TCCState *s1, int token)
     int size_log2 = 3;
     uint32_t base_opcode;
 
+    parse_operand(s1, &op1);
+    if (tok == ',') next();
+    parse_operand(s1, &op2);
+
+    rt = op1.reg;
+    rn = op2.reg;
+    offset = op2.e.v;
+
     switch (token) {
         case TOK_ASM_ldr:
-            base_opcode = 0xF9400000;
-            is_64bit = 1;
-            size_log2 = 3;
+            base_opcode = 0xB9400000;
+            if (op1.reg_type & REG_X) {
+                is_64bit = 1;
+                size_log2 = 3;
+            } else if (op1.reg_type & REG_W) {
+                is_64bit = 0;
+                size_log2 = 2;
+            } else {
+                tcc_error("ldr requires a w or x register");
+                return;
+            }
             break;
         case TOK_ASM_ldrb:
             base_opcode = 0x39400000;
@@ -757,9 +795,17 @@ static void asm_ldst(TCCState *s1, int token)
             size_log2 = 1;
             break;
         case TOK_ASM_str:
-            base_opcode = 0xF9000000;
-            is_64bit = 1;
-            size_log2 = 3;
+            base_opcode = 0xB9000000;
+            if (op1.reg_type & REG_X) {
+                is_64bit = 1;
+                size_log2 = 3;
+            } else if (op1.reg_type & REG_W) {
+                is_64bit = 0;
+                size_log2 = 2;
+            } else {
+                tcc_error("str requires a w or x register");
+                return;
+            }
             break;
         case TOK_ASM_strb:
             base_opcode = 0x39000000;
@@ -775,14 +821,6 @@ static void asm_ldst(TCCState *s1, int token)
             tcc_error("unsupported load/store instruction");
             return;
     }
-
-    parse_operand(s1, &op1);
-    if (tok == ',') next();
-    parse_operand(s1, &op2);
-
-    rt = op1.reg;
-    rn = op2.reg;
-    offset = op2.e.v;
 
     gen_ldst_imm(base_opcode, rt, rn, offset, is_64bit, size_log2);
 }
