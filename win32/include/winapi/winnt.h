@@ -47,6 +47,15 @@ extern "C" {
 #endif
 #endif
 
+#if !defined(I_X86_) && !defined(_IA64_) && !defined(_AMD64_) && defined(__aarch64__)
+#define _ARM64_
+#endif
+
+/* Also define _ARM64_ when __aarch64__ is defined for Windows */
+#if defined(_WIN32) && defined(__aarch64__) && !defined(_ARM64_)
+#define _ARM64_
+#endif
+
 
 #ifdef _WIN64
 #define MAX_NATURAL_ALIGNMENT sizeof(ULONGLONG)
@@ -1336,6 +1345,7 @@ typedef DWORD LCID;
 
 #define LEGACY_SAVE_AREA_LENGTH sizeof(XMM_SAVE_AREA32)
 
+#ifndef _ARM64_
   typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
     DWORD64 P1Home;
     DWORD64 P2Home;
@@ -1407,6 +1417,7 @@ typedef DWORD LCID;
     DWORD64 LastExceptionToRip;
     DWORD64 LastExceptionFromRip;
   } CONTEXT,*PCONTEXT;
+#endif /* !_ARM64_ */
 
 #define RUNTIME_FUNCTION_INDIRECT 0x1
 
@@ -1417,6 +1428,108 @@ typedef DWORD LCID;
   } RUNTIME_FUNCTION,*PRUNTIME_FUNCTION;
 
   typedef PRUNTIME_FUNCTION (*PGET_RUNTIME_FUNCTION_CALLBACK)(DWORD64 ControlPc,PVOID Context);
+
+#ifdef _ARM64_
+
+/* ARM64 Context Definition */
+#define CONTEXT_ARM64 0x00400000
+
+#ifndef CONTEXT_CONTROL
+#define CONTEXT_CONTROL (CONTEXT_ARM64 | 0x00000001L)
+#endif
+#ifndef CONTEXT_INTEGER
+#define CONTEXT_INTEGER (CONTEXT_ARM64 | 0x00000002L)
+#endif
+#ifndef CONTEXT_FLOATING_POINT
+#define CONTEXT_FLOATING_POINT (CONTEXT_ARM64 | 0x00000004L)
+#endif
+#ifndef CONTEXT_DEBUG
+#define CONTEXT_DEBUG (CONTEXT_ARM64 | 0x00000008L)
+#endif
+
+#ifndef CONTEXT_FULL
+#define CONTEXT_FULL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
+#endif
+#ifndef CONTEXT_ALL
+#define CONTEXT_ALL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT | CONTEXT_DEBUG)
+#endif
+
+  typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
+    DWORD64 ContextFlags;
+    DWORD64 X0;
+    DWORD64 X1;
+    DWORD64 X2;
+    DWORD64 X3;
+    DWORD64 X4;
+    DWORD64 X5;
+    DWORD64 X6;
+    DWORD64 X7;
+    DWORD64 X8;
+    DWORD64 X9;
+    DWORD64 X10;
+    DWORD64 X11;
+    DWORD64 X12;
+    DWORD64 X13;
+    DWORD64 X14;
+    DWORD64 X15;
+    DWORD64 X16;
+    DWORD64 X17;
+    DWORD64 X18;
+    DWORD64 X19;
+    DWORD64 X20;
+    DWORD64 X21;
+    DWORD64 X22;
+    DWORD64 X23;
+    DWORD64 X24;
+    DWORD64 X25;
+    DWORD64 X26;
+    DWORD64 X27;
+    DWORD64 X28;
+    DWORD64 Fp;
+    DWORD64 Lr;
+    DWORD64 Sp;
+    DWORD64 Pc;
+    DWORD64 V0;
+    DWORD64 V1;
+    DWORD64 V2;
+    DWORD64 V3;
+    DWORD64 V4;
+    DWORD64 V5;
+    DWORD64 V6;
+    DWORD64 V7;
+    DWORD64 V8;
+    DWORD64 V9;
+    DWORD64 V10;
+    DWORD64 V11;
+    DWORD64 V12;
+    DWORD64 V13;
+    DWORD64 V14;
+    DWORD64 V15;
+    DWORD64 V16;
+    DWORD64 V17;
+    DWORD64 V18;
+    DWORD64 V19;
+    DWORD64 V20;
+    DWORD64 V21;
+    DWORD64 V22;
+    DWORD64 V23;
+    DWORD64 V24;
+    DWORD64 V25;
+    DWORD64 V26;
+    DWORD64 V27;
+    DWORD64 V28;
+    DWORD64 V29;
+    DWORD64 V30;
+    DWORD64 V31;
+    DWORD Fpcr;
+    DWORD Fpsr;
+    DWORD Bcr[8];
+    DWORD Bvr[8];
+    DWORD Wcr[2];
+    DWORD Wvr[2];
+  } CONTEXT,*PCONTEXT;
+
+#endif /* _ARM64_ */
   typedef DWORD (*POUT_OF_PROCESS_FUNCTION_TABLE_CALLBACK)(HANDLE Process,PVOID TableAddress,PDWORD Entries,PRUNTIME_FUNCTION *Functions);
 
 #define OUT_OF_PROCESS_FUNCTION_TABLE_CALLBACK_EXPORT_NAME "OutOfProcessFunctionTableCallback"
@@ -3701,6 +3814,7 @@ typedef DWORD LCID;
 #define IMAGE_FILE_MACHINE_CEF 0x0CEF
 #define IMAGE_FILE_MACHINE_EBC 0x0EBC
 #define IMAGE_FILE_MACHINE_AMD64 0x8664
+#define IMAGE_FILE_MACHINE_ARM64 0xAA64
 #define IMAGE_FILE_MACHINE_M32R 0x9041
 #define IMAGE_FILE_MACHINE_CEE 0xC0EE
 

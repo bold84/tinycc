@@ -1202,9 +1202,9 @@ static int rt_error(rt_frame *f, const char *fmt, ...)
 static void rt_getcontext(ucontext_t *uc, rt_frame *rc)
 {
 #if defined _WIN64 && defined __aarch64__
-    rc->ip = uc->Pc;
-    rc->fp = uc->Fp;
-    rc->sp = uc->Sp;
+    rc->ip = uc->Pc;      /* Program Counter */
+    rc->fp = uc->Fp;      /* Frame Pointer (X29) */
+    rc->sp = uc->Sp;      /* Stack Pointer (X30 is LR, but SP is separate) */
 #elif defined _WIN64
     rc->ip = uc->Rip;
     rc->fp = uc->Rbp;
