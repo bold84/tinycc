@@ -312,14 +312,15 @@ static void arm64_spoff(int reg, uint64_t off)
 static uint64_t arm64_check_offset(int invert, int sz_, uint64_t off)
 {
     uint32_t sz = sz_;
-    if (!(off & ~((uint32_t)0xfff << sz)) ||
+    uint64_t scaled_mask = (uint64_t)0xfff << sz;
+
+    if (!(off & ~scaled_mask) ||
         (off < 256 || -off <= 256))
         return invert ? off : 0ul;
-    else if ((off & ((uint32_t)0xfff << sz)))
-        return invert ? off & ((uint32_t)0xfff << sz)
-		      : off & ~((uint32_t)0xfff << sz);
+    else if (off & scaled_mask)
+        return invert ? off & scaled_mask : off & ~scaled_mask;
     else if (off & 0x1ff)
-        return invert ? off & 0x1ff : off & ~0x1ff;
+        return invert ? off & 0x1ff : off & ~(uint64_t)0x1ff;
     else
         return invert ? 0ul : off;
 }
@@ -327,9 +328,10 @@ static uint64_t arm64_check_offset(int invert, int sz_, uint64_t off)
 static void arm64_ldrx(int sg, int sz_, int dst, int bas, uint64_t off)
 {
     uint32_t sz = sz_;
+    uint64_t scaled_mask = (uint64_t)0xfff << sz;
     if (sz >= 2)
         sg = 0;
-    if (!(off & ~((uint32_t)0xfff << sz)))
+    if (!(off & ~scaled_mask))
         o(0x39400000 | dst | bas << 5 | off << (10 - sz) |
           (uint32_t)!!sg << 23 | sz << 30); // ldr(*) x(dst),[x(bas),#(off)]
     else if (off < 256 || -off <= 256)
@@ -345,7 +347,9 @@ static void arm64_ldrx(int sg, int sz_, int dst, int bas, uint64_t off)
 static void arm64_ldrv(int sz_, int dst, int bas, uint64_t off)
 {
     uint32_t sz = sz_;
-    if (!(off & ~((uint32_t)0xfff << sz)))
+    uint64_t scaled_mask = (uint64_t)0xfff << sz;
+
+    if (!(off & ~scaled_mask))
         o(0x3d400000 | dst | bas << 5 | off << (10 - sz) |
           (sz & 4) << 21 | (sz & 3) << 30); // ldr (s|d|q)(dst),[x(bas),#(off)]
     else if (off < 256 || -off <= 256)
@@ -442,7 +446,9 @@ static void arm64_ldrs(int reg_, int size)
 static void arm64_strx(int sz_, int dst, int bas, uint64_t off)
 {
     uint32_t sz = sz_;
-    if (!(off & ~((uint32_t)0xfff << sz)))
+    uint64_t scaled_mask = (uint64_t)0xfff << sz;
+
+    if (!(off & ~scaled_mask))
         o(0x39000000 | dst | bas << 5 | off << (10 - sz) | sz << 30);
         // str(*) x(dst),[x(bas],#(off)]
     else if (off < 256 || -off <= 256)
@@ -458,7 +464,9 @@ static void arm64_strx(int sz_, int dst, int bas, uint64_t off)
 static void arm64_strv(int sz_, int dst, int bas, uint64_t off)
 {
     uint32_t sz = sz_;
-    if (!(off & ~((uint32_t)0xfff << sz)))
+    uint64_t scaled_mask = (uint64_t)0xfff << sz;
+
+    if (!(off & ~scaled_mask))
         o(0x3d000000 | dst | bas << 5 | off << (10 - sz) |
           (sz & 4) << 21 | (sz & 3) << 30); // str (s|d|q)(dst),[x(bas),#(off)]
     else if (off < 256 || -off <= 256)
