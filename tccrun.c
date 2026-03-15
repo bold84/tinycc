@@ -21,6 +21,17 @@
 #include "tcc.h"
 #ifdef _WIN32
 #include <stdlib.h>
+#if defined(_WIN64) && defined(__aarch64__) && defined(CONFIG_TCC_BACKTRACE_ONLY)
+/* TCC's Windows ARM64 support objects may emit direct InterlockedExchange
+   calls in the backtrace-only build; provide a local fallback so -b/-bt
+   executables do not depend on the PE import for this helper. */
+LONG InterlockedExchange(LONG volatile *Target, LONG Value)
+{
+    LONG Old = *Target;
+    *Target = Value;
+    return Old;
+}
+#endif
 #endif
 
 /* only native compiler supports -run */
@@ -73,6 +84,9 @@ static void rt_wait_sem(void) { WAIT_SEM(&rt_sem); }
 static void rt_post_sem(void) { POST_SEM(&rt_sem); }
 static int rt_get_caller_pc(addr_t *paddr, rt_frame *f, int level);
 static void rt_exit(rt_frame *f, int code);
+#if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+static void rt_restore_context_from_jmpbuf(void *p_jmp_buf, int code);
+#endif
 
 /* ------------------------------------------------------------- */
 /* defined when included from lib/bt-exe.c */
@@ -233,6 +247,24 @@ static wchar_t **rt_get_wenviron(void)
 }
 #endif
 
+#ifdef _WIN32
+static void rt_flush_target_io(void)
+{
+    typedef int (__cdecl *rt_fflush_func_t)(void *);
+    static rt_fflush_func_t fn;
+    static int init;
+
+    if (!init) {
+        HMODULE dll = GetModuleHandleA("msvcrt.dll");
+        if (dll)
+            fn = (rt_fflush_func_t)(void *)GetProcAddress(dll, "fflush");
+        init = 1;
+    }
+    if (fn)
+        fn(NULL);
+}
+#endif
+
 static int tcc_run_setjmp(TCCState *s1, TCCRunJmpBuf *jb, const char *top_sym)
 {
     _tcc_setjmp(s1, jb->jb, tcc_get_symbol(s1, top_sym), longjmp);
@@ -308,6 +340,12 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     } else if (RT_EXIT_ZERO == ret) {
         ret = 0;
     }
+
+#ifdef _WIN32
+    rt_flush_target_io();
+#endif
+    fflush(stdout);
+    fflush(stderr);
 
     if (s1->dflag & 16 && ret) /* tcc -dt -run ... */
         fprintf(s1->ppfp, "[returns %d]\n", ret), fflush(s1->ppfp);
@@ -672,9 +710,14 @@ static void rt_exit(rt_frame *f, int code)
                 ((void (*)(void))p)();
         }
 #endif
+#if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+        rt_restore_context_from_jmpbuf(s->run_jb, code);
+        return;
+#else
         if (code == 0)
             code = RT_EXIT_ZERO;
         ((void(*)(void*,int))s->run_lj)(s->run_jb, code);
+#endif
     }
     exit(code);
 }

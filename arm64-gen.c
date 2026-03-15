@@ -760,6 +760,8 @@ static void gen_bounds_epilog(void)
 
 static int arm64_hfa_aux(CType *type, int *fsize, int num)
 {
+    if (!type)
+        return -1;
     if (is_float(type->t)) {
         int a, n = type_size(type, &a);
         if (num >= 4 || (*fsize && *fsize != n))
@@ -770,6 +772,8 @@ static int arm64_hfa_aux(CType *type, int *fsize, int num)
     else if ((type->t & VT_BTYPE) == VT_STRUCT) {
         int is_struct = 1; /* assume struct, check if union */
         Sym *field;
+        if (!type->ref)
+            return -1;
         /* A union has all fields at offset 0, a struct has increasing offsets */
         for (field = type->ref->next; field; field = field->next)
             if (field->c != 0) {
@@ -815,6 +819,8 @@ static int arm64_hfa_aux(CType *type, int *fsize, int num)
     }
     else if ((type->t & VT_ARRAY) && ((type->t & VT_BTYPE) != VT_PTR)) {
         int num1;
+        if (!type->ref || (type->t & VT_VLA))
+            return -1;
         if (!type->ref->c)
             return num;
         num1 = arm64_hfa_aux(&type->ref->type, fsize, num);
@@ -830,8 +836,12 @@ static int arm64_hfa_aux(CType *type, int *fsize, int num)
 
 static int arm64_hfa(CType *type, unsigned *fsize)
 {
+    if (!type)
+        return 0;
     if ((type->t & VT_BTYPE) == VT_STRUCT ||
         ((type->t & VT_ARRAY) && ((type->t & VT_BTYPE) != VT_PTR))) {
+        if (!type->ref || (type->t & VT_VLA))
+            return 0;
         int sz = 0;
         int n = arm64_hfa_aux(type, &sz, 0);
         if (0 < n && n <= 4) {
@@ -1255,6 +1265,15 @@ static int arm64_func_sub_sp_offset;
 
 #define ARM64_FUNC_STACK_SETUP_SLOTS 6
 
+#ifdef TCC_TARGET_PE
+static unsigned long arm64_pe_param_off(unsigned long a)
+{
+    return a < 16 ? 160 + a / 2 * 8 :
+           a < 32 ? 16 + (a - 16) / 2 * 16 :
+           224 + ((a - 32) >> 1 << 1);
+}
+#endif
+
 ST_FUNC void gfunc_prolog(Sym *func_sym)
 {
     CType *func_type = &func_sym->type;
@@ -1273,17 +1292,22 @@ ST_FUNC void gfunc_prolog(Sym *func_sym)
 
     for (sym = func_type->ref; sym; sym = sym->next)
         ++n;
-    t = n ? tcc_malloc(n * sizeof(*t)) : NULL;
-    a = n ? tcc_malloc(n * sizeof(*a)) : NULL;
+    t = n || variadic ? tcc_malloc((n + variadic) * sizeof(*t)) : NULL;
+    a = n || variadic ? tcc_malloc((n + variadic) * sizeof(*a)) : NULL;
 
     for (sym = func_type->ref; sym; sym = sym->next)
         t[i++] = &sym->type;
+#ifdef TCC_TARGET_PE
+    if (variadic)
+        t[i++] = &int_type;
+#endif
 
-    arm64_func_va_list_stack = arm64_pcs(variadic ? var_nb_arg : 0, n - 1, t, a);
+    arm64_func_va_list_stack = arm64_pcs(variadic ? var_nb_arg : 0,
+                                         n - 1 + variadic, t, a);
 
 #ifdef TCC_TARGET_PE
     if (variadic)
-        arm64_func_va_list_stack = 160 + (unsigned long)var_nb_arg * 8;
+        arm64_func_va_list_stack = arm64_pe_param_off(a[n]);
 #endif
 
 #if !defined(TCC_TARGET_MACHO)

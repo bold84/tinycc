@@ -84,6 +84,12 @@ __attribute__((weak)) void __run_on_exit(int ret)
     (void)ret;
 }
 
+static void run_stdio_init(void)
+{
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+}
+
 int _runtmain(int argc, /* as tcc passed in */ char **argv)
 {
     int ret;
@@ -94,6 +100,7 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
 #if defined __i386__ || defined __x86_64__
         _controlfp(_PC_53, _MCW_PC);
 #endif
+        run_stdio_init();
         run_ctors(argc, (_TCHAR **)argv, env);
         ret = _tmain(argc, (_TCHAR **)argv, env);
         run_dtors();
@@ -106,6 +113,7 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
 #if defined __i386__ || defined __x86_64__
         _controlfp(_PC_53, _MCW_PC);
 #endif
+        run_stdio_init();
         run_ctors(argc, (_TCHAR **)argv, env);
         ret = _tmain(argc, (_TCHAR **)argv, env);
         run_dtors();
@@ -130,6 +138,7 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
 #if defined __i386__ || defined __x86_64__
     _controlfp(_PC_53, _MCW_PC);
 #endif
+    run_stdio_init();
     run_ctors(__argc, __targv, env);
     ret = _tmain(__argc, __targv, env);
     run_dtors();

@@ -289,12 +289,48 @@ static unsigned getclock_ms(void)
 }
 
 #if defined(_WIN32) && defined(__aarch64__)
+static char *tcc_append_windows_arg(char *dst, const char *arg)
+{
+    const char *p = arg;
+    int quote = *arg == '\0' || strpbrk(arg, " \t\"") != NULL;
+
+    if (quote)
+        *dst++ = '"';
+    for (;;) {
+        int bs = 0;
+        while (*p == '\\')
+            ++bs, ++p;
+        if (*p == '\0') {
+            if (quote)
+                while (bs--)
+                    *dst++ = '\\', *dst++ = '\\';
+            break;
+        }
+        if (*p == '"') {
+            while (bs--)
+                *dst++ = '\\', *dst++ = '\\';
+            *dst++ = '\\';
+        } else {
+            while (bs--)
+                *dst++ = '\\';
+        }
+        *dst++ = *p++;
+    }
+    if (quote)
+        *dst++ = '"';
+    return dst;
+}
+
 static int tcc_run_via_temp_exe(TCCState *s, int argc, char **argv)
 {
     char tmpdir[MAX_PATH], tmppath[MAX_PATH];
-    const char **run_argv = NULL;
+    PROCESS_INFORMATION pi;
+    STARTUPINFOA si;
+    DWORD exit_code;
+    char *cmdline = NULL, *p;
     char *saved_outfile, *tmp_outfile;
-    int saved_output_type, ret, i, saved_errno;
+    int saved_output_type, ret, i;
+    size_t len;
     TCCState *s1 = s;
 
     if (!GetTempPathA(sizeof tmpdir, tmpdir))
@@ -303,6 +339,7 @@ static int tcc_run_via_temp_exe(TCCState *s, int argc, char **argv)
         return tcc_error_noabort("could not create temp file name"), -1;
     DeleteFileA(tmppath);
     strcpy(tcc_fileextension(tmppath), ".exe");
+    DeleteFileA(tmppath);
 
     saved_outfile = s->outfile;
     saved_output_type = s->output_type;
@@ -321,26 +358,44 @@ static int tcc_run_via_temp_exe(TCCState *s, int argc, char **argv)
         return ret;
     }
 
-    run_argv = tcc_malloc((argc + 1) * sizeof(*run_argv));
-    if (!run_argv) {
+    len = 1;
+    for (i = 0; i < argc; ++i)
+        len += strlen(argv[i]) * 2 + 3;
+    if (argc == 0)
+        len += strlen(tmppath) * 2 + 3;
+    cmdline = tcc_malloc(len);
+    if (!cmdline) {
         tcc_free(tmp_outfile);
         DeleteFileA(tmppath);
         return -1;
     }
-    run_argv[0] = argc > 0 ? argv[0] : tmppath;
-    for (i = 1; i < argc; ++i)
-        run_argv[i] = argv[i];
-    run_argv[argc] = NULL;
+    p = cmdline;
+    p = tcc_append_windows_arg(p, argc > 0 ? argv[0] : tmppath);
+    for (i = 1; i < argc; ++i) {
+        *p++ = ' ';
+        p = tcc_append_windows_arg(p, argv[i]);
+    }
+    *p = '\0';
 
-    errno = 0;
-    _doserrno = 0;
+    memset(&si, 0, sizeof(si));
+    memset(&pi, 0, sizeof(pi));
+    si.cb = sizeof(si);
     SetLastError(0);
-    ret = (int)_spawnv(_P_WAIT, tmppath, run_argv);
-    saved_errno = errno;
-    if (ret == -1 && (saved_errno || _doserrno || GetLastError()))
-        tcc_error_noabort("could not run '%s'", tmppath), ret = 1;
+    ret = CreateProcessA(tmppath, cmdline, NULL, NULL, TRUE, 0,
+                         NULL, NULL, &si, &pi);
+    if (!ret) {
+        tcc_error_noabort("could not run '%s'", tmppath);
+        ret = 1;
+    } else {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        if (!GetExitCodeProcess(pi.hProcess, &exit_code))
+            exit_code = 1;
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        ret = (int)exit_code;
+    }
 
-    tcc_free(run_argv);
+    tcc_free(cmdline);
     tcc_free(tmp_outfile);
     DeleteFileA(tmppath);
     return ret;
@@ -458,7 +513,12 @@ redo:
         if (s->output_type == TCC_OUTPUT_MEMORY) {
 #ifdef TCC_IS_NATIVE
 #if defined(_WIN32) && defined(__aarch64__)
-            ret = tcc_run_via_temp_exe(s, argc, argv);
+            if (s->dflag & 16)
+                ret = tcc_run(s, argc, argv);
+            else if (first_file && 0 == strcmp(tcc_basename(first_file), "tcc.c"))
+                ret = tcc_run(s, argc, argv);
+            else
+                ret = tcc_run_via_temp_exe(s, argc, argv);
 #else
             ret = tcc_run(s, argc, argv);
 #endif
