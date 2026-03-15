@@ -874,12 +874,13 @@ static unsigned long arm64_pcs_aux(int variadic, int n, CType **type, unsigned l
             size = type_size(type[i], &align);
 
 #if defined(TCC_TARGET_MACHO)
-        if (variadic && i == variadic) {
+        if (variadic > 0 && i == variadic) {
             nx = 8;
             nv = 8;
 	}
 #elif defined(TCC_TARGET_PE)
-        if (variadic && i >= variadic && (hfa || is_float(type[i]->t))) {
+        if ((variadic < 0 || (variadic > 0 && i >= variadic))
+            && (hfa || is_float(type[i]->t))) {
             hfa = 0;
             if (is_float(type[i]->t)) {
                 win_vararg_float = 1;
@@ -992,6 +993,8 @@ static unsigned long arm64_pcs_aux(int variadic, int n, CType **type, unsigned l
     return ns - 32;
 }
 
+#define ARM64_PCS_ALL_VARARGS (-1)
+
 static unsigned long arm64_pcs(int variadic, int n, CType **type, unsigned long *a)
 {
     unsigned long stack;
@@ -1074,6 +1077,7 @@ ST_FUNC void gfunc_call(int nb_args)
     unsigned long *a, *a1;
     unsigned long stack;
     int i;
+    int pcs_variadic = 0;
     int func_type = vtop[-nb_args].type.ref->f.func_type;
     int variadic = (func_type == FUNC_ELLIPSIS);
     int old_style = (func_type == FUNC_OLD);
@@ -1098,7 +1102,11 @@ ST_FUNC void gfunc_call(int nb_args)
     for (i = 0; i < nb_args; i++)
         t[nb_args - i] = &vtop[-i].type;
 
-    stack = arm64_pcs((variadic || old_style) ? var_nb_arg : 0, nb_args, t, a);
+    if (variadic)
+        pcs_variadic = var_nb_arg;
+    else if (old_style)
+        pcs_variadic = ARM64_PCS_ALL_VARARGS;
+    stack = arm64_pcs(pcs_variadic, nb_args, t, a);
 
     // Allocate space for structs replaced by pointer:
     for (i = nb_args; i; i--)
@@ -1263,6 +1271,7 @@ ST_FUNC void gfunc_call(int nb_args)
 static unsigned long arm64_func_va_list_stack;
 static int arm64_func_va_list_gr_offs;
 static int arm64_func_va_list_vr_offs;
+static unsigned arm64_func_start_offset;
 static int arm64_func_sub_sp_offset;
 
 #define ARM64_FUNC_STACK_SETUP_SLOTS 6
@@ -1341,6 +1350,7 @@ ST_FUNC void gfunc_prolog(Sym *func_sym)
     last_int = last_int > 4 ? 4 : last_int;
     last_float = last_float > 4 ? 4 : last_float;
 
+    arm64_func_start_offset = ind;
     o(0xa9b27bfd); // stp x29,x30,[sp,#-224]!
     for (i = 0; i < last_float; i++)
         // stp q0,q1,[sp,#16], stp q2,q3,[sp,#48]
@@ -1664,8 +1674,7 @@ ST_FUNC void gfunc_epilog(void)
 
 #ifdef TCC_TARGET_PE
     {
-        unsigned start = arm64_func_sub_sp_offset - 8;
-        pe_add_unwind_data(start, ind, -loc);
+        pe_add_unwind_data(arm64_func_start_offset, ind, -loc);
     }
 #endif
 }

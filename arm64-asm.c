@@ -3,7 +3,7 @@
  *  ARM64 (AArch64) assembler for TCC
  *
  *  Based on ARM64 Architecture Reference Manual
- *  Supports AArch64 instruction set for inline assembly
+ *  Supports AArch64 assembler parsing plus basic inline asm strings
  */
 
 #ifdef TARGET_DEFS_ONLY
@@ -1169,29 +1169,42 @@ ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
     }
 }
 
-/* Generate code for inline asm - ARM64 inline asm with constraints not yet fully implemented */
+static int asm_has_clobbers(const uint8_t *clobber_regs)
+{
+    int i;
+    for (i = 0; i < NB_ASM_REGS; ++i)
+        if (clobber_regs[i])
+            return 1;
+    return 0;
+}
+
+/* Basic inline asm strings are assembled directly by tccasm.c.
+   Operand allocation and clobber handling are still unsupported here. */
 ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
                           int nb_outputs, int is_output,
                           uint8_t *clobber_regs,
                           int out_reg)
 {
-    /* For now, just handle clobber registers by marking them as volatile */
-    /* TODO: Implement full ARM64 inline asm support with register allocation */
-    if (nb_operands > 0 || out_reg > 0) {
-        tcc_error("ARM64 inline asm with operands is not implemented");
-    }
-    gen_nop();
+    (void)operands;
+    (void)nb_outputs;
+    (void)is_output;
+
+    if (nb_operands > 0 || asm_has_clobbers(clobber_regs) || out_reg >= 0)
+        tcc_error("ARM64 extended inline asm is not implemented");
 }
 
-/* Compute constraints - ARM64 not yet fully implemented */
 ST_FUNC void asm_compute_constraints(ASMOperand *operands,
                                      int nb_operands, int nb_outputs,
                                      const uint8_t *clobber_regs,
                                      int *pout_reg)
 {
-    /* TODO: Implement ARM64 constraint computation */
+    (void)operands;
+    (void)nb_outputs;
+
     if (pout_reg)
-        *pout_reg = 0;
+        *pout_reg = -1;
+    if (nb_operands > 0 || asm_has_clobbers(clobber_regs))
+        tcc_error("ARM64 extended inline asm is not implemented");
 }
 
 /* Handle clobber list */
