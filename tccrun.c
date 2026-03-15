@@ -21,17 +21,6 @@
 #include "tcc.h"
 #ifdef _WIN32
 #include <stdlib.h>
-#if defined(_WIN64) && defined(__aarch64__) && defined(CONFIG_TCC_BACKTRACE_ONLY)
-/* TCC's Windows ARM64 support objects may emit direct InterlockedExchange
-   calls in the backtrace-only build; provide a local fallback so -b/-bt
-   executables do not depend on the PE import for this helper. */
-LONG InterlockedExchange(LONG volatile *Target, LONG Value)
-{
-    LONG Old = *Target;
-    *Target = Value;
-    return Old;
-}
-#endif
 #endif
 
 /* only native compiler supports -run */
@@ -223,10 +212,6 @@ ST_FUNC void tcc_run_free(TCCState *s1)
 
 #define RT_EXIT_ZERO 0xE0E00E0E /* passed from longjmp instead of '0' */
 
-typedef struct TCCRunJmpBuf {
-    jmp_buf jb;
-} TCCRunJmpBuf;
-
 #ifdef _WIN32
 static char **rt_get_environ(void)
 {
@@ -265,25 +250,13 @@ static void rt_flush_target_io(void)
 }
 #endif
 
-static int tcc_run_setjmp(TCCState *s1, TCCRunJmpBuf *jb, const char *top_sym)
-{
-    _tcc_setjmp(s1, jb->jb, tcc_get_symbol(s1, top_sym), longjmp);
-    return setjmp(jb->jb);
-}
-
 /* launch the compiled program with the given arguments */
 LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 {
-    int ret;
+    int (*prog_main)(int, char **, char **), ret;
     const char *top_sym;
-    TCCRunJmpBuf main_jb;
-#ifdef _WIN32
-    int (*prog_main)(int, char **);
-#else
-    int (*prog_main)(int, char **, char **);
-#endif
+    jmp_buf main_jb;
 
-#ifndef _WIN32
 #if defined(__APPLE__)
     extern char ***_NSGetEnviron(void);
     char **envp = *_NSGetEnviron();
@@ -292,7 +265,6 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     char **envp = environ;
 #else
     char **envp = environ;
-#endif
 #endif
 
     /* tcc -dt -run ... nothing to do if no main() */
@@ -330,13 +302,9 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     fflush(stdout);
     fflush(stderr);
 
-    ret = tcc_run_setjmp(s1, &main_jb, top_sym);
+    ret = tcc_setjmp(s1, main_jb, tcc_get_symbol(s1, top_sym));
     if (0 == ret) {
-#ifdef _WIN32
-        ret = prog_main(argc, argv);
-#else
         ret = prog_main(argc, argv, envp);
-#endif
     } else if (RT_EXIT_ZERO == ret) {
         ret = 0;
     }
@@ -1178,113 +1146,6 @@ found:
     return (addr_t)func_addr;
 }
 /* ------------------------------------------------------------- */
-#if defined(_WIN32) && defined(CONFIG_TCC_BACKTRACE_ONLY)
-static const char *rt_backtrace_format(const char *fmt, char *skip, int *one)
-{
-    const char *a, *b;
-
-    skip[0] = 0;
-    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
-        size_t len = b - a;
-        if (len >= 40)
-            len = 39;
-        memcpy(skip, a, len);
-        skip[len] = 0;
-        fmt = b + 1;
-    }
-    *one = 0;
-    if (fmt[0] == '\001')
-        ++fmt, *one = 1;
-    return fmt;
-}
-
-/* Windows bt-dll.c needs a preformatted-message entry point because the
-   ARM64 wrapper path cannot forward a va_list through the old trampoline
-   mechanism. Keep this helper out of the generic runtime path. */
-static int _tcc_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
-{
-    rt_context *rc, *rc2;
-    addr_t pc;
-    char skip[40];
-    int i, level, ret, n, one;
-    const char *a;
-    bt_info bi;
-    addr_t (*getinfo)(rt_context*, addr_t, bt_info*);
-
-    rt_backtrace_format(fmt, skip, &one);
-
-    rt_wait_sem();
-    rc = g_rc;
-    getinfo = rt_printline, n = 6;
-    if (rc) {
-        if (rc->dwarf)
-            getinfo = rt_printline_dwarf;
-        if (rc->num_callers)
-            n = rc->num_callers;
-    }
-
-    for (i = level = 0; level < n; i++) {
-        ret = rt_get_caller_pc(&pc, f, i);
-        if (ret == -1)
-            break;
-        memset(&bi, 0, sizeof bi);
-        for (rc2 = rc; rc2; rc2 = rc2->next) {
-            if (getinfo(rc2, pc, &bi))
-                break;
-            /* we try symtab symbols (no line number info) */
-            if (!!(a = rt_elfsym(rc2, pc, &bi.func_pc))) {
-                pstrcpy(bi.func, sizeof bi.func, a);
-                break;
-            }
-        }
-        //fprintf(stderr, "%d rc %p %p\n", i, (void*)pcfunc, (void*)pc);
-        if (skip[0] && strstr(bi.file, skip))
-            continue;
-#ifndef CONFIG_TCC_BACKTRACE_ONLY
-        {
-            TCCState *s = rt_find_state(f);
-            if (s && s->bt_func) {
-                ret = s->bt_func(
-                    s->bt_data,
-                    (void*)pc,
-                    bi.file[0] ? bi.file : NULL,
-                    bi.line,
-                    bi.func[0] ? bi.func : NULL,
-                    level == 0 ? msg : NULL
-                    );
-                if (ret == 0)
-                    break;
-                goto check_break;
-            }
-        }
-#endif
-        if (bi.file[0]) {
-            rt_printf("%s:%d", bi.file, bi.line);
-        } else {
-            rt_printf("0x%08llx", (long long)pc);
-        }
-        rt_printf(": %s %s", level ? "by" : "at", bi.func[0] ? bi.func : "???");
-        if (level == 0) {
-            rt_printf(": %s", msg);
-            if (one)
-                break;
-        }
-        rt_printf("\n");
-
-#ifndef CONFIG_TCC_BACKTRACE_ONLY
-    check_break:
-#endif
-        if (rc2
-            && bi.func_pc
-            && bi.func_pc == (addr_t)rc2->top_func)
-            break;
-        ++level;
-    }
-    rt_post_sem();
-    return 0;
-}
-#endif
-
 #ifndef CONFIG_TCC_BACKTRACE_ONLY
 static
 #endif

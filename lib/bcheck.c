@@ -1171,7 +1171,7 @@ __bound_main_arg(int argc, char **argv, char **envp)
     }
 }
 
-static void bound_exit_impl(void)
+void __attribute__((destructor)) __bound_exit(void)
 {
     int i;
     static const char * const alloc_type[] = {
@@ -1281,11 +1281,6 @@ static void bound_exit_impl(void)
 #endif
         }
     }
-}
-
-void __attribute__((destructor)) __bound_exit(void)
-{
-    bound_exit_impl();
 }
 
 void __bound_exit_dll(size_t *p)

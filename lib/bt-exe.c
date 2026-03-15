@@ -11,6 +11,16 @@
 # define __declspec(n)
 #endif
 
+#if defined(_WIN64) && defined(__aarch64__)
+/* The bt-only Windows ARM64 build should not rely on importing this helper. */
+LONG InterlockedExchange(LONG volatile *Target, LONG Value)
+{
+    LONG Old = *Target;
+    *Target = Value;
+    return Old;
+}
+#endif
+
 #ifdef _WIN64
 static void bt_init_pe_prog_base(rt_context *p)
 {
@@ -53,10 +63,88 @@ void __bt_init(rt_context *p, int is_exe)
 }
 
 #ifdef _WIN32
+static const char *bt_backtrace_format(const char *fmt, char *skip, int *one)
+{
+    const char *a, *b;
+
+    skip[0] = 0;
+    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
+        size_t len = b - a;
+        if (len >= 40)
+            len = 39;
+        memcpy(skip, a, len);
+        skip[len] = 0;
+        fmt = b + 1;
+    }
+    *one = 0;
+    if (fmt[0] == '\001')
+        ++fmt, *one = 1;
+    return fmt;
+}
+
+static int bt_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
+{
+    rt_context *rc, *rc2;
+    addr_t pc;
+    char skip[40];
+    int i, level, ret, n, one;
+    const char *a;
+    bt_info bi;
+    addr_t (*getinfo)(rt_context*, addr_t, bt_info*);
+
+    bt_backtrace_format(fmt, skip, &one);
+
+    rt_wait_sem();
+    rc = g_rc;
+    getinfo = rt_printline, n = 6;
+    if (rc) {
+        if (rc->dwarf)
+            getinfo = rt_printline_dwarf;
+        if (rc->num_callers)
+            n = rc->num_callers;
+    }
+
+    for (i = level = 0; level < n; i++) {
+        ret = rt_get_caller_pc(&pc, f, i);
+        if (ret == -1)
+            break;
+        memset(&bi, 0, sizeof bi);
+        for (rc2 = rc; rc2; rc2 = rc2->next) {
+            if (getinfo(rc2, pc, &bi))
+                break;
+            if (!!(a = rt_elfsym(rc2, pc, &bi.func_pc))) {
+                pstrcpy(bi.func, sizeof bi.func, a);
+                break;
+            }
+        }
+        if (skip[0] && strstr(bi.file, skip))
+            continue;
+        if (bi.file[0]) {
+            rt_printf("%s:%d", bi.file, bi.line);
+        } else {
+            rt_printf("0x%08llx", (long long)pc);
+        }
+        rt_printf(": %s %s", level ? "by" : "at", bi.func[0] ? bi.func : "???");
+        if (level == 0) {
+            rt_printf(": %s", msg);
+            if (one)
+                break;
+        }
+        rt_printf("\n");
+        if (rc2
+            && bi.func_pc
+            && bi.func_pc == (addr_t)rc2->top_func)
+            break;
+        ++level;
+    }
+    rt_post_sem();
+    return 0;
+}
+
 __declspec(dllexport)
 int __bt_backtrace(rt_frame *f, const char *msg)
 {
-    return _tcc_backtrace_msg(f, msg, msg);
+    return bt_backtrace_msg(f, msg, msg);
 }
 #endif
 
