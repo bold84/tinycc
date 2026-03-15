@@ -505,6 +505,7 @@ struct SymAttr {
     unsigned short
     aligned     : 5, /* alignment as log2+1 (0 == unspecified) */
     packed      : 1,
+    typedef_align : 1, /* alignment came from a typedef'ed type */
     weak        : 1,
     visibility  : 2,
     dllexport   : 1,
@@ -512,7 +513,7 @@ struct SymAttr {
     dllimport   : 1,
     addrtaken   : 1,
     nodebug     : 1,
-    xxxx        : 2; /* not used */
+    xxxx        : 1; /* not used */
 };
 
 /* function attributes or temporary attributes for parsing */

@@ -21,6 +21,12 @@
 #include "tcc.h"
 #ifdef _WIN32
 #include <stdlib.h>
+# if !defined(_UCRT) && !defined(_ARM_) && !defined(__arm__) && !defined(_ARM64_) && !defined(__aarch64__) && !defined(_ARM64EC_) && !defined(__arm64ec__)
+/* MinGW's x86_64 msvcrt headers prefer __p__environ(), but msvcrt.dll exports
+   _get_environ() directly, which is what the TCC runtime can reliably import. */
+_CRTIMP errno_t __cdecl _get_environ(char ***);
+_CRTIMP errno_t __cdecl _get_wenviron(wchar_t ***);
+# endif
 #endif
 
 /* only native compiler supports -run */

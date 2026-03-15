@@ -573,7 +573,7 @@ itof: -1234.000000
 utof: 2166572288.000000
 lltof: -81985531201716224.000000
 ulltof: 17375807653627822000.000000
-float: 42.12346
+float: 42.123455
 double: 42.123455
 long double: 42.123455
 strtof: 1.200000
@@ -612,7 +612,7 @@ itof: -1234.000000
 utof: 2166572288.000000
 lltof: -81985529205302080.000000
 ulltof: 17375808098308006000.000000
-float: 42.12346
+float: 42.123455
 double: 42.123457
 long double: 42.123457
 strtod: 1.200000
@@ -651,7 +651,7 @@ itof: -1234.000000
 utof: 2166572288.000000
 lltof: -81985529205302080.000000
 ulltof: 17375808098308006000.000000
-float: 42.12346
+float: 42.123455
 double: 42.123457
 long double: 42.123457
 strtold: 1.200000
@@ -923,6 +923,24 @@ aa1
 a=2
 
 ---- asm_test ----
+hello wo
+hello wo
+mul64=0x1df4d840
+inc64=0x0
+mconstraint: 148 51 52
+set=0x1080fd
+swab32(0x01020304) = 0x4030201
+asm_local_statics: 42
+asmbool: failed
+fancycpy(43)=43
+fancycpy2(44)=44
+regvar=4243
+asmhc: 0x4542
+asm_dot_test 1: 8
+asm_dot_test 2: 123
+asm_dot_test 3: 456
+asm_dot_test 4: 789
+asm_pcrel_test : 0
 
 ---- builtin_test ----
 __builtin_types_compatible_p(int, int) = 1

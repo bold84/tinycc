@@ -1177,8 +1177,10 @@ ST_FUNC void vpush_helper_func(int v)
 /* Merge symbol attributes.  */
 static void merge_symattr(struct SymAttr *sa, struct SymAttr *sa1)
 {
-    if (sa1->aligned && !sa->aligned)
+    if (sa1->aligned && !sa->aligned) {
       sa->aligned = sa1->aligned;
+      sa->typedef_align = sa1->typedef_align;
+    }
     sa->packed |= sa1->packed;
     sa->weak |= sa1->weak;
     sa->nodebug |= sa1->nodebug;
@@ -4000,6 +4002,7 @@ redo:
                 n = MAX_ALIGN;
             }
             ad->a.aligned = exact_log2p1(n);
+            ad->a.typedef_align = 0;
 	    if (n != 1 << (ad->a.aligned - 1))
 	      tcc_error("alignment of %d is larger than implemented", n);
             break;
@@ -4226,8 +4229,11 @@ static void struct_layout(CType *type, AttributeDef *ad)
         }
         /* some individual align was specified */
 #ifdef TCC_TARGET_PE
-        /* GNU aligned(n) on a field is a minimum, not a way to lower alignment. */
-        if (a > align)
+        /* GNU aligned(n) on a field is a minimum, not a way to lower alignment.
+           Typedef-level alignment changes the type alignment itself. */
+        if (f->a.typedef_align && a)
+            align = a;
+        else if (a > align)
             align = a;
 #else
         if (a)
@@ -4701,7 +4707,10 @@ do_decl:
 
 static void sym_to_attr(AttributeDef *ad, Sym *s)
 {
+    int had_aligned = ad->a.aligned;
     merge_symattr(&ad->a, &s->a);
+    if (!had_aligned && (s->type.t & VT_TYPEDEF) && s->a.aligned)
+        ad->a.typedef_align = 1;
     merge_funcattr(&ad->f, &s->f);
 }
 

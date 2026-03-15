@@ -69,9 +69,17 @@ ifneq (,$(filter FreeBSD NetBSD,$(TARGETOS)))
   TESTS += test1
 endif
 
+HOST_WIN_UCRT = no
+ifeq ($(TARGETOS),WIN32)
+HOST_WIN_UCRT := $(shell printf '#include <stdlib.h>\n' | $(CC) -dM -E -xc - 2>/dev/null | grep -q '^#define _UCRT' && echo yes || echo no)
+endif
+
 TCCTEST_REF = test.ref
 ifeq ($(ARCH)-$(TARGETOS),arm64-WIN32)
 TCCTEST_REF = test.ref.win32-arm64
+else ifeq ($(ARCH)-$(TARGETOS)-$(HOST_WIN_UCRT),x86_64-WIN32-yes)
+# CLANG64/UCRT generates a different host reference than the msvcrt-backed TCC runtime.
+TCCTEST_REF = test.ref.win32-x86_64-ucrt
 endif
 
 RUN_TCC = -run $(TOPSRC)/tcc.c $(TCCFLAGS)
