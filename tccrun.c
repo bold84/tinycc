@@ -1522,7 +1522,6 @@ static void rt_restore_context_from_jmpbuf(void *p_jmp_buf, int code)
 static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
 {
     rt_frame f;
-    TCCState *s;
     unsigned code;
     rt_getcontext(ex_info->ContextRecord, &f);
 
@@ -1546,6 +1545,7 @@ static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
         break;
     }
 #if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+    TCCState *s;
     rt_wait_sem();
     s = rt_find_state(&f);
     rt_post_sem();
