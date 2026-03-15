@@ -778,28 +778,10 @@ static int arm64_hfa_aux(CType *type, int *fsize, int num)
         return num + 1;
     }
     else if ((type->t & VT_BTYPE) == VT_STRUCT) {
-        int is_struct = 1; /* assume struct, check if union */
         Sym *field;
         if (!type->ref)
             return -1;
-        /* A union has all fields at offset 0, a struct has increasing offsets */
-        for (field = type->ref->next; field; field = field->next)
-            if (field->c != 0) {
-                is_struct = 1;
-                break;
-            }
-        /* If all fields are at offset 0 and there's more than one field, it's a union */
-        if (type->ref->next && type->ref->next->next && !type->ref->next->c) {
-            /* Check if all fields are at offset 0 (union) */
-            int all_zero = 1;
-            for (field = type->ref->next; field; field = field->next)
-                if (field->c != 0) {
-                    all_zero = 0;
-                    break;
-                }
-            is_struct = !all_zero;
-        }
-        if (is_struct) {
+        if (!IS_UNION(type->t)) {
             int num0 = num;
             for (field = type->ref->next; field; field = field->next) {
                 if (field->c != (num - num0) * *fsize)
