@@ -58,8 +58,16 @@ typedef struct Operand {
     int8_t reg2;
     uint8_t reg_type;
     uint8_t shift;
+    uint8_t addr_mode;
+    int reg_tok;
     ExprValue e;
 } Operand;
+
+enum {
+    ADDR_OFF,
+    ADDR_PRE,
+    ADDR_POST,
+};
 
 /* Forward declaration */
 static void parse_addr_operand(TCCState *s1, Operand *op);
@@ -217,6 +225,8 @@ static void parse_operand(TCCState *s1, Operand *op)
     op->reg2 = -1;
     op->reg_type = 0;
     op->shift = 0;
+    op->addr_mode = ADDR_OFF;
+    op->reg_tok = 0;
 
     /* Address operand in brackets [xn, ...] */
     if (tok == '[') {
@@ -230,6 +240,7 @@ static void parse_operand(TCCState *s1, Operand *op)
         op->type = OP_REG;
         op->reg = reg;
         op->reg_type = get_reg_type(tok);
+        op->reg_tok = tok;
         next();
         return;
     }
@@ -244,7 +255,7 @@ static void parse_operand(TCCState *s1, Operand *op)
     }
 
     /* Immediate or address expression */
-    if (tok == '#' || tok == ':' || tok == '@') {
+    if (tok == '#' || tok == ':' || tok == '@' || tok == '$') {
         next();
     }
     asm_expr(s1, &op->e);
@@ -261,20 +272,34 @@ static void parse_addr_operand(TCCState *s1, Operand *op)
     op->reg2 = -1;
     op->e.v = 0;
     op->e.sym = NULL;
+    op->addr_mode = ADDR_OFF;
+    op->reg_tok = 0;
 
     skip('[');
     reg = arm64_parse_regvar(tok);
     if (reg >= 0 && reg < 32) {
         op->reg = reg;
+        op->reg_tok = tok;
         next();
         /* Check for offset */
         if (tok == ',') {
             next();
-            if (tok == '#' || tok == '@') next();
+            if (tok == '#' || tok == '@' || tok == '$')
+                next();
             asm_expr(s1, &op->e);
         }
     }
     skip(']');
+    if (tok == '!') {
+        op->addr_mode = ADDR_PRE;
+        next();
+    } else if (tok == ',') {
+        op->addr_mode = ADDR_POST;
+        next();
+        if (tok == '#' || tok == '@' || tok == '$')
+            next();
+        asm_expr(s1, &op->e);
+    }
 }
 
 /* Generate MOVZ instruction */
@@ -317,10 +342,22 @@ static void gen_movk(int rd, uint16_t imm, int shift, int is_64bit)
 static void gen_add_imm(int rd, int rn, uint32_t imm, int is_64bit, int setflags)
 {
     uint32_t instr = 0x11000000;
+    uint32_t imm12;
+
     if (is_64bit) instr |= (1 << 31);
     if (setflags) instr |= (1 << 29);
-    instr |= ((imm >> 12) & 0x3) << 22;
-    instr |= (imm & 0xFFF) << 10;
+
+    if (imm <= 0xFFF) {
+        imm12 = imm;
+    } else if (!(imm & 0xFFF) && (imm >> 12) <= 0xFFF) {
+        instr |= 1 << 22;
+        imm12 = imm >> 12;
+    } else {
+        tcc_error("add immediate out of range");
+        return;
+    }
+
+    instr |= imm12 << 10;
     instr |= (rn & 0x1F) << 5;
     instr |= rd & 0x1F;
     emit_instr32(instr);
@@ -330,10 +367,22 @@ static void gen_add_imm(int rd, int rn, uint32_t imm, int is_64bit, int setflags
 static void gen_sub_imm(int rd, int rn, uint32_t imm, int is_64bit, int setflags)
 {
     uint32_t instr = 0x51000000;
+    uint32_t imm12;
+
     if (is_64bit) instr |= (1 << 31);
     if (setflags) instr |= (1 << 29);
-    instr |= ((imm >> 12) & 0x3) << 22;
-    instr |= (imm & 0xFFF) << 10;
+
+    if (imm <= 0xFFF) {
+        imm12 = imm;
+    } else if (!(imm & 0xFFF) && (imm >> 12) <= 0xFFF) {
+        instr |= 1 << 22;
+        imm12 = imm >> 12;
+    } else {
+        tcc_error("sub immediate out of range");
+        return;
+    }
+
+    instr |= imm12 << 10;
     instr |= (rn & 0x1F) << 5;
     instr |= rd & 0x1F;
     emit_instr32(instr);
@@ -350,16 +399,39 @@ static void gen_dp_reg(uint32_t opcode, int rd, int rn, int rm, int is_64bit)
     emit_instr32(instr);
 }
 
-/* Generate LDR/STR (immediate) */
+/* Generate LDR/STR (unsigned immediate) */
 static void gen_ldst_imm(uint32_t base_opcode, int rt, int rn,
-                         int32_t offset, int is_64bit, int size_log2)
+                         int32_t offset, int size_log2)
 {
     uint32_t instr = base_opcode;
     uint32_t imm12;
 
-    if (is_64bit) instr |= (1 << 30);
+    if (offset < 0 || (offset & ((1 << size_log2) - 1)))
+        tcc_error("invalid load/store offset");
     imm12 = offset >> size_log2;
+    if (imm12 > 0xFFF)
+        tcc_error("load/store offset out of range");
     instr |= (imm12 & 0xFFF) << 10;
+    instr |= (rn & 0x1F) << 5;
+    instr |= rt & 0x1F;
+    emit_instr32(instr);
+}
+
+/* Generate STP/LDP (signed immediate) */
+static void gen_ldst_pair(uint32_t base_opcode, int rt, int rt2, int rn,
+                          int32_t offset, int size_log2)
+{
+    int32_t imm7;
+    uint32_t instr = base_opcode;
+
+    if (offset & ((1 << size_log2) - 1))
+        tcc_error("invalid pair load/store offset");
+    imm7 = offset >> size_log2;
+    if (imm7 < -64 || imm7 > 63)
+        tcc_error("pair load/store offset out of range");
+
+    instr |= (imm7 & 0x7F) << 15;
+    instr |= (rt2 & 0x1F) << 10;
     instr |= (rn & 0x1F) << 5;
     instr |= rt & 0x1F;
     emit_instr32(instr);
@@ -444,6 +516,61 @@ static void gen_mov_reg(int rd, int rm, int is_64bit)
     emit_instr32(instr);
 }
 
+static int operand_is_sp(const Operand *op)
+{
+    return op->reg_tok == TOK_ASM_sp;
+}
+
+static int parse_sysreg_name(int t)
+{
+    const char *name;
+
+    if (t < TOK_IDENT)
+        return -1;
+    name = get_tok_str(t, NULL);
+    if (!strcmp(name, "FPCR") || !strcmp(name, "fpcr"))
+        return 0;
+    if (!strcmp(name, "FPSR") || !strcmp(name, "fpsr"))
+        return 1;
+    return -1;
+}
+
+static void gen_mrs(int rt, int sysreg)
+{
+    uint32_t instr;
+
+    switch (sysreg) {
+        case 0:
+            instr = 0xD53B4400;
+            break;
+        case 1:
+            instr = 0xD53B4420;
+            break;
+        default:
+            tcc_error("unsupported system register");
+            return;
+    }
+    emit_instr32(instr | (rt & 0x1F));
+}
+
+static void gen_msr(int rt, int sysreg)
+{
+    uint32_t instr;
+
+    switch (sysreg) {
+        case 0:
+            instr = 0xD51B4400;
+            break;
+        case 1:
+            instr = 0xD51B4420;
+            break;
+        default:
+            tcc_error("unsupported system register");
+            return;
+    }
+    emit_instr32(instr | (rt & 0x1F));
+}
+
 /* Generate NOP */
 static void gen_nop(void)
 {
@@ -454,40 +581,46 @@ static void gen_nop(void)
 static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm, int is_64bit)
 {
     uint32_t instr;
+    int width = is_64bit ? 64 : 32;
 
     if (is_imm) {
         /* Shift by immediate */
         switch (shift_type) {
             case 0: /* LSL */
-                instr = is_64bit ? 0xD3600000 : 0x53000000;
-                /* For LSL, the immediate is encoded as (64 - imm) & 0x3F for 64-bit */
-                if (is_64bit) {
-                    instr |= ((64 - rm_or_imm) & 0x3F) << 10;
-                } else {
-                    instr |= ((32 - rm_or_imm) & 0x1F) << 10;
+                if (rm_or_imm < 0 || rm_or_imm >= width) {
+                    tcc_error("shift immediate out of range");
+                    return;
                 }
+                instr = is_64bit ? 0xD3400000 : 0x53000000;
+                instr |= ((width - rm_or_imm) & (width - 1)) << 16;
+                instr |= (width - 1 - rm_or_imm) << 10;
                 break;
             case 1: /* LSR */
-                instr = is_64bit ? 0xD3600000 : 0x53000000;
-                instr |= (1 << 22);
-                if (is_64bit) {
-                    instr |= ((64 - rm_or_imm) & 0x3F) << 10;
-                } else {
-                    instr |= ((32 - rm_or_imm) & 0x1F) << 10;
+                if (rm_or_imm < 0 || rm_or_imm >= width) {
+                    tcc_error("shift immediate out of range");
+                    return;
                 }
+                instr = is_64bit ? 0xD3400000 : 0x53000000;
+                instr |= rm_or_imm << 16;
+                instr |= (width - 1) << 10;
                 break;
             case 2: /* ASR */
-                instr = is_64bit ? 0xD3600000 : 0x53000000;
-                instr |= (2 << 22);
-                if (is_64bit) {
-                    instr |= ((64 - rm_or_imm) & 0x3F) << 10;
-                } else {
-                    instr |= ((32 - rm_or_imm) & 0x1F) << 10;
+                if (rm_or_imm < 0 || rm_or_imm >= width) {
+                    tcc_error("shift immediate out of range");
+                    return;
                 }
+                instr = is_64bit ? 0x93400000 : 0x13000000;
+                instr |= rm_or_imm << 16;
+                instr |= (width - 1) << 10;
                 break;
             case 3: /* ROR */
-                instr = is_64bit ? 0x93C00000 : 0x13C00000;
-                instr |= (rm_or_imm & 0x1F) << 10;
+                if (rm_or_imm < 0 || rm_or_imm >= width) {
+                    tcc_error("shift immediate out of range");
+                    return;
+                }
+                instr = is_64bit ? 0x93C00000 : 0x13800000;
+                instr |= (rn & 0x1F) << 16;
+                instr |= (rm_or_imm & (width - 1)) << 10;
                 break;
             default:
                 tcc_error("unknown shift type");
@@ -499,21 +632,23 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
         /* Shift by register */
         switch (shift_type) {
             case 0: /* LSL */
-                instr = is_64bit ? 0x1AC02000 : 0x1AC02000;
+                instr = 0x1AC02000;
                 break;
             case 1: /* LSR */
-                instr = is_64bit ? 0x1AC02400 : 0x1AC02400;
+                instr = 0x1AC02400;
                 break;
             case 2: /* ASR */
-                instr = is_64bit ? 0x1AC02800 : 0x1AC02800;
+                instr = 0x1AC02800;
                 break;
             case 3: /* ROR */
-                instr = is_64bit ? 0x1AC02C00 : 0x1AC02C00;
+                instr = 0x1AC02C00;
                 break;
             default:
                 tcc_error("unknown shift type");
                 return;
         }
+        if (is_64bit)
+            instr |= 1U << 31;
         instr |= (rm_or_imm & 0x1F) << 16;
         instr |= (rn & 0x1F) << 5;
         instr |= rd & 0x1F;
@@ -674,11 +809,18 @@ static void asm_mov(TCCState *s1)
 
     if (op2.type & OP_IM) {
         /* Handle immediate: mov x0, #123 */
+        if (operand_is_sp(&op1)) {
+            tcc_error("cannot move an immediate into sp");
+            return;
+        }
         gen_mov_imm(rd, op2.e.v, is_64bit);
     } else if (op2.type & OP_REG) {
         /* Handle register: mov x0, x1 */
         rn = op2.reg;
-        gen_mov_reg(rd, rn, is_64bit);
+        if (operand_is_sp(&op1) || operand_is_sp(&op2))
+            gen_add_imm(rd, rn, 0, 1, 0);
+        else
+            gen_mov_reg(rd, rn, is_64bit);
     } else {
         tcc_error("invalid operand for mov");
     }
@@ -758,7 +900,6 @@ static void asm_ldst(TCCState *s1, int token)
     Operand op1, op2;
     int rt, rn;
     int32_t offset = 0;
-    int is_64bit = 1;
     int size_log2 = 3;
     uint32_t base_opcode;
 
@@ -772,49 +913,49 @@ static void asm_ldst(TCCState *s1, int token)
 
     switch (token) {
         case TOK_ASM_ldr:
-            base_opcode = 0xB9400000;
             if (op1.reg_type & REG_X) {
-                is_64bit = 1;
+                base_opcode = 0xF9400000;
                 size_log2 = 3;
             } else if (op1.reg_type & REG_W) {
-                is_64bit = 0;
+                base_opcode = 0xB9400000;
                 size_log2 = 2;
+            } else if (op1.reg_type & REG_D) {
+                base_opcode = 0xFD400000;
+                size_log2 = 3;
             } else {
-                tcc_error("ldr requires a w or x register");
+                tcc_error("ldr requires a w, x, or d register");
                 return;
             }
             break;
         case TOK_ASM_ldrb:
             base_opcode = 0x39400000;
-            is_64bit = 0;
             size_log2 = 0;
             break;
         case TOK_ASM_ldrh:
             base_opcode = 0x79400000;
-            is_64bit = 0;
             size_log2 = 1;
             break;
         case TOK_ASM_str:
-            base_opcode = 0xB9000000;
             if (op1.reg_type & REG_X) {
-                is_64bit = 1;
+                base_opcode = 0xF9000000;
                 size_log2 = 3;
             } else if (op1.reg_type & REG_W) {
-                is_64bit = 0;
+                base_opcode = 0xB9000000;
                 size_log2 = 2;
+            } else if (op1.reg_type & REG_D) {
+                base_opcode = 0xFD000000;
+                size_log2 = 3;
             } else {
-                tcc_error("str requires a w or x register");
+                tcc_error("str requires a w, x, or d register");
                 return;
             }
             break;
         case TOK_ASM_strb:
             base_opcode = 0x39000000;
-            is_64bit = 0;
             size_log2 = 0;
             break;
         case TOK_ASM_strh:
             base_opcode = 0x79000000;
-            is_64bit = 0;
             size_log2 = 1;
             break;
         default:
@@ -822,7 +963,81 @@ static void asm_ldst(TCCState *s1, int token)
             return;
     }
 
-    gen_ldst_imm(base_opcode, rt, rn, offset, is_64bit, size_log2);
+    if (op2.addr_mode != ADDR_OFF)
+        tcc_error("only offset addressing is implemented for ldr/str");
+    gen_ldst_imm(base_opcode, rt, rn, offset, size_log2);
+}
+
+static void asm_ldst_pair(TCCState *s1, int token)
+{
+    Operand op1, op2, op3;
+    uint32_t base_opcode;
+    int size_log2 = 3;
+
+    parse_operand(s1, &op1);
+    if (tok == ',')
+        next();
+    parse_operand(s1, &op2);
+    if (tok == ',')
+        next();
+    parse_operand(s1, &op3);
+
+    if (!(op3.type & OP_ADDR))
+        tcc_error("pair load/store requires an address operand");
+
+    if ((op1.reg_type & REG_X) && (op2.reg_type & REG_X)) {
+        if (token == TOK_ASM_stp) {
+            base_opcode = op3.addr_mode == ADDR_PRE ? 0xA9800000 :
+                          op3.addr_mode == ADDR_POST ? 0xA8800000 :
+                          0xA9000000;
+        } else {
+            base_opcode = op3.addr_mode == ADDR_PRE ? 0xA9C00000 :
+                          op3.addr_mode == ADDR_POST ? 0xA8C00000 :
+                          0xA9400000;
+        }
+    } else if ((op1.reg_type & REG_D) && (op2.reg_type & REG_D)) {
+        if (token == TOK_ASM_stp) {
+            base_opcode = op3.addr_mode == ADDR_PRE ? 0x6D800000 :
+                          op3.addr_mode == ADDR_POST ? 0x6C800000 :
+                          0x6D000000;
+        } else {
+            base_opcode = op3.addr_mode == ADDR_PRE ? 0x6DC00000 :
+                          op3.addr_mode == ADDR_POST ? 0x6CC00000 :
+                          0x6D400000;
+        }
+    } else {
+        tcc_error("stp/ldp requires matching x or d registers");
+        return;
+    }
+
+    gen_ldst_pair(base_opcode, op1.reg, op2.reg, op3.reg, op3.e.v, size_log2);
+}
+
+static void asm_sysreg(TCCState *s1, int token)
+{
+    Operand op;
+    int sysreg;
+
+    if (token == TOK_ASM_mrs) {
+        parse_operand(s1, &op);
+        if (tok == ',')
+            next();
+        sysreg = parse_sysreg_name(tok);
+        if (sysreg < 0)
+            tcc_error("unsupported system register");
+        next();
+        gen_mrs(op.reg, sysreg);
+        return;
+    }
+
+    sysreg = parse_sysreg_name(tok);
+    if (sysreg < 0)
+        tcc_error("unsupported system register");
+    next();
+    if (tok == ',')
+        next();
+    parse_operand(s1, &op);
+    gen_msr(op.reg, sysreg);
 }
 
 /* Handle branch instructions */
@@ -850,20 +1065,22 @@ static void asm_branch(TCCState *s1, int token)
             /* Check for conditional branch */
             cond = -1;
             switch (token) {
-                case TOK_ASM_b_eq: cond = 0; break;
-                case TOK_ASM_b_ne: cond = 1; break;
-                case TOK_ASM_b_cs: cond = 2; break;
-                case TOK_ASM_b_cc: cond = 3; break;
-                case TOK_ASM_b_mi: cond = 4; break;
-                case TOK_ASM_b_pl: cond = 5; break;
-                case TOK_ASM_b_vs: cond = 6; break;
-                case TOK_ASM_b_vc: cond = 7; break;
-                case TOK_ASM_b_hi: cond = 8; break;
-                case TOK_ASM_b_ls: cond = 9; break;
-                case TOK_ASM_b_ge: cond = 10; break;
-                case TOK_ASM_b_lt: cond = 11; break;
-                case TOK_ASM_b_gt: cond = 12; break;
-                case TOK_ASM_b_le: cond = 13; break;
+                case TOK_ASM_beq: cond = 0; break;
+                case TOK_ASM_bne: cond = 1; break;
+                case TOK_ASM_bcs:
+                case TOK_ASM_bhs: cond = 2; break;
+                case TOK_ASM_bcc:
+                case TOK_ASM_blo: cond = 3; break;
+                case TOK_ASM_bmi: cond = 4; break;
+                case TOK_ASM_bpl: cond = 5; break;
+                case TOK_ASM_bvs: cond = 6; break;
+                case TOK_ASM_bvc: cond = 7; break;
+                case TOK_ASM_bhi: cond = 8; break;
+                case TOK_ASM_bls: cond = 9; break;
+                case TOK_ASM_bge: cond = 10; break;
+                case TOK_ASM_blt: cond = 11; break;
+                case TOK_ASM_bgt: cond = 12; break;
+                case TOK_ASM_ble: cond = 13; break;
             }
 
             if (cond >= 0) {
@@ -890,20 +1107,22 @@ static void asm_branch(TCCState *s1, int token)
             /* Check for conditional branch */
             cond = -1;
             switch (token) {
-                case TOK_ASM_b_eq: cond = 0; break;
-                case TOK_ASM_b_ne: cond = 1; break;
-                case TOK_ASM_b_cs: cond = 2; break;
-                case TOK_ASM_b_cc: cond = 3; break;
-                case TOK_ASM_b_mi: cond = 4; break;
-                case TOK_ASM_b_pl: cond = 5; break;
-                case TOK_ASM_b_vs: cond = 6; break;
-                case TOK_ASM_b_vc: cond = 7; break;
-                case TOK_ASM_b_hi: cond = 8; break;
-                case TOK_ASM_b_ls: cond = 9; break;
-                case TOK_ASM_b_ge: cond = 10; break;
-                case TOK_ASM_b_lt: cond = 11; break;
-                case TOK_ASM_b_gt: cond = 12; break;
-                case TOK_ASM_b_le: cond = 13; break;
+                case TOK_ASM_beq: cond = 0; break;
+                case TOK_ASM_bne: cond = 1; break;
+                case TOK_ASM_bcs:
+                case TOK_ASM_bhs: cond = 2; break;
+                case TOK_ASM_bcc:
+                case TOK_ASM_blo: cond = 3; break;
+                case TOK_ASM_bmi: cond = 4; break;
+                case TOK_ASM_bpl: cond = 5; break;
+                case TOK_ASM_bvs: cond = 6; break;
+                case TOK_ASM_bvc: cond = 7; break;
+                case TOK_ASM_bhi: cond = 8; break;
+                case TOK_ASM_bls: cond = 9; break;
+                case TOK_ASM_bge: cond = 10; break;
+                case TOK_ASM_blt: cond = 11; break;
+                case TOK_ASM_bgt: cond = 12; break;
+                case TOK_ASM_ble: cond = 13; break;
             }
 
             if (cond >= 0) {
@@ -1052,25 +1271,32 @@ ST_FUNC void asm_opcode(TCCState *s1, int opcode)
             asm_ldst(s1, opcode);
             break;
 
+        case TOK_ASM_ldp:
+        case TOK_ASM_stp:
+            asm_ldst_pair(s1, opcode);
+            break;
+
         case TOK_ASM_b:
         case TOK_ASM_bl:
         case TOK_ASM_br:
         case TOK_ASM_blr:
         case TOK_ASM_ret:
-        case TOK_ASM_b_eq:
-        case TOK_ASM_b_ne:
-        case TOK_ASM_b_cs:
-        case TOK_ASM_b_cc:
-        case TOK_ASM_b_mi:
-        case TOK_ASM_b_pl:
-        case TOK_ASM_b_vs:
-        case TOK_ASM_b_vc:
-        case TOK_ASM_b_hi:
-        case TOK_ASM_b_ls:
-        case TOK_ASM_b_ge:
-        case TOK_ASM_b_lt:
-        case TOK_ASM_b_gt:
-        case TOK_ASM_b_le:
+        case TOK_ASM_beq:
+        case TOK_ASM_bne:
+        case TOK_ASM_bcs:
+        case TOK_ASM_bhs:
+        case TOK_ASM_bcc:
+        case TOK_ASM_blo:
+        case TOK_ASM_bmi:
+        case TOK_ASM_bpl:
+        case TOK_ASM_bvs:
+        case TOK_ASM_bvc:
+        case TOK_ASM_bhi:
+        case TOK_ASM_bls:
+        case TOK_ASM_bge:
+        case TOK_ASM_blt:
+        case TOK_ASM_bgt:
+        case TOK_ASM_ble:
             asm_branch(s1, opcode);
             break;
 
@@ -1083,6 +1309,11 @@ ST_FUNC void asm_opcode(TCCState *s1, int opcode)
         case TOK_ASM_movn:
         case TOK_ASM_movk:
             asm_move_wide(s1, opcode);
+            break;
+
+        case TOK_ASM_mrs:
+        case TOK_ASM_msr:
+            asm_sysreg(s1, opcode);
             break;
 
         case TOK_ASM_isb:

@@ -374,6 +374,8 @@
  DEF_ASM(adrp)
 
 /* System instructions */
+ DEF_ASM(mrs)
+ DEF_ASM(msr)
  DEF_ASM(nop)
  DEF_ASM(wfi)
  DEF_ASM(wfe)

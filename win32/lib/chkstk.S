@@ -13,18 +13,25 @@
 
 .globl __chkstk
 __chkstk:
-    .long   0x910003f0
-    .long   0xd37cedf1
-    .long   0xb4000131
-    .long   0xf1400620
-    .long   0x540000a9
-    .long   0xd1400610
-    .long   0xf940021f
-    .long   0xd1400631
-    .long   0x17fffffb
-    .long   0xcb110210
-    .long   0xf940021f
-    .long   0xd65f03c0
+    /* Windows ARM64 stack probing helper.
+       arm64-gen.c passes the requested frame size in x15, scaled in 16-byte
+       units. Probe one 4 KiB page at a time and leave SP unchanged; the caller
+       subtracts SP after the probe returns. */
+    mov     x16, sp
+    lsl     x17, x15, 4
+    cbz     x17, L_chkstk_done
+L_chkstk_loop:
+    subs    x0, x17, 4096
+    bls     L_chkstk_tail
+    sub     x16, x16, 4096
+    ldr     xzr, [x16]
+    sub     x17, x17, 4096
+    b       L_chkstk_loop
+L_chkstk_tail:
+    sub     x16, x16, x17
+    ldr     xzr, [x16]
+L_chkstk_done:
+    ret
 
 .globl _(tinyc_getbp)
 _(tinyc_getbp):
@@ -33,53 +40,57 @@ _(tinyc_getbp):
 
 .globl _(mingw_getsp)
 _(mingw_getsp):
-    .long   0x910003e0
-    .long   0xd65f03c0
+    mov     x0, sp
+    ret
 
 .globl _(__mingw_setjmp)
 _(__mingw_setjmp):
-    .long   0xf900001f
-    .long   0xa9015013
-    .long   0xa9025815
-    .long   0xa9036017
-    .long   0xa9046819
-    .long   0xa905701b
-    .long   0xa906781d
-    .long   0x910003e2
-    .long   0xf9003802
-    .long   0xd53b4402
-    .long   0xb9007802
-    .long   0xd53b4422
-    .long   0xb9007c02
-    .long   0x6d082408
-    .long   0x6d092c0a
-    .long   0x6d0a340c
-    .long   0x6d0b3c0e
-    .long   0xd2800000
-    .long   0xd65f03c0
+    /* _JUMP_BUFFER layout matches win32/include/setjmp.h for _ARM64_:
+       0x00 Frame, 0x08 Reserved, 0x10-0x68 X19-X30, 0x70 Sp,
+       0x78 Fpcr/Fpsr, 0x80-0xB8 D8-D15. */
+    str     xzr, [x0]       /* Frame = 0 */
+    stp     x19, x20, [x0, 16]
+    stp     x21, x22, [x0, 32]
+    stp     x23, x24, [x0, 48]
+    stp     x25, x26, [x0, 64]
+    stp     x27, x28, [x0, 80]
+    stp     x29, x30, [x0, 96]
+    mov     x2, sp
+    str     x2, [x0, 112]   /* Sp */
+    mrs     x2, FPCR
+    str     w2, [x0, 120]   /* Fpcr */
+    mrs     x2, FPSR
+    str     w2, [x0, 124]   /* Fpsr */
+    stp     d8, d9, [x0, 128]
+    stp     d10, d11, [x0, 144]
+    stp     d12, d13, [x0, 160]
+    stp     d14, d15, [x0, 176]
+    mov     x0, 0
+    ret
 
 .globl _(__mingw_longjmp)
 _(__mingw_longjmp):
-    .long   0xa9415013
-    .long   0xa9425815
-    .long   0xa9436017
-    .long   0xa9446819
-    .long   0xa945701b
-    .long   0xa946781d
-    .long   0xf9403802
-    .long   0x9100005f
-    .long   0xb9407802
-    .long   0xd51b4402
-    .long   0xb9407c02
-    .long   0xd51b4422
-    .long   0x6d482408
-    .long   0x6d492c0a
-    .long   0x6d4a340c
-    .long   0x6d4b3c0e
-    .long   0xaa0103e0
-    .long   0xb5000040
-    .long   0xd2800020
-    .long   0xd65f03c0
+    ldp     x19, x20, [x0, 16]
+    ldp     x21, x22, [x0, 32]
+    ldp     x23, x24, [x0, 48]
+    ldp     x25, x26, [x0, 64]
+    ldp     x27, x28, [x0, 80]
+    ldp     x29, x30, [x0, 96]
+    ldr     x2, [x0, 112]   /* Sp */
+    mov     sp, x2
+    ldr     w2, [x0, 120]   /* Fpcr */
+    msr     FPCR, x2
+    ldr     w2, [x0, 124]   /* Fpsr */
+    msr     FPSR, x2
+    ldp     d8, d9, [x0, 128]
+    ldp     d10, d11, [x0, 144]
+    ldp     d12, d13, [x0, 160]
+    ldp     d14, d15, [x0, 176]
+    mov     x0, x1
+    cbnz    x0, L_longjmp_done
+    mov     x0, 1
+L_longjmp_done:
+    ret
 
 /* ---------------------------------------------- */
 #elif !defined(__x86_64__)
