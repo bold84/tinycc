@@ -1691,6 +1691,7 @@ ST_FUNC void gbound_args(int nb_args)
         v = sv->sym->v;
         if (v == TOK_setjmp
           || v == TOK__setjmp
+          || v == TOK___mingw_setjmp
 #ifndef TCC_TARGET_PE
           || v == TOK_sigsetjmp
           || v == TOK___sigsetjmp
@@ -4224,8 +4225,13 @@ static void struct_layout(CType *type, AttributeDef *ad)
             }
         }
         /* some individual align was specified */
+#ifdef TCC_TARGET_PE
+        if (a > align)
+            align = a;
+#else
         if (a)
             align = a;
+#endif
 
         if (type->ref->type.t == VT_UNION) {
 	    if (pcc && bit_size >= 0)

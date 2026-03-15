@@ -2556,11 +2556,11 @@ void longlong_test(void)
     a = ia;
     b = ua;
     printf(LONG_LONG_FORMAT " " LONG_LONG_FORMAT "\n", a, b);
-    printf(LONG_LONG_FORMAT " " LONG_LONG_FORMAT " " LONG_LONG_FORMAT " %Lx\n", 
+    printf(LONG_LONG_FORMAT " " LONG_LONG_FORMAT " " LONG_LONG_FORMAT " " XLONG_LONG_FORMAT "\n",
            (long long)1, 
            (long long)-2,
            1LL,
-           0x1234567812345679);
+           0x1234567812345679ULL);
     a = llfunc1(-3);
     printf(LONG_LONG_FORMAT "\n", a);
 

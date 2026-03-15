@@ -19,6 +19,20 @@
  */
 
 #include "tcc.h"
+#ifdef _WIN32
+#include <stdlib.h>
+#if defined(_WIN64) && defined(__aarch64__) && defined(CONFIG_TCC_BACKTRACE_ONLY)
+/* TCC's Windows ARM64 support objects may emit direct InterlockedExchange
+   calls in the backtrace-only build; provide a local fallback so -b/-bt
+   executables do not depend on the PE import for this helper. */
+LONG InterlockedExchange(LONG volatile *Target, LONG Value)
+{
+    LONG Old = *Target;
+    *Target = Value;
+    return Old;
+}
+#endif
+#endif
 
 /* only native compiler supports -run */
 #ifdef TCC_IS_NATIVE
@@ -70,6 +84,9 @@ static void rt_wait_sem(void) { WAIT_SEM(&rt_sem); }
 static void rt_post_sem(void) { POST_SEM(&rt_sem); }
 static int rt_get_caller_pc(addr_t *paddr, rt_frame *f, int level);
 static void rt_exit(rt_frame *f, int code);
+#if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+static void rt_restore_context_from_jmpbuf(void *p_jmp_buf, int code);
+#endif
 
 /* ------------------------------------------------------------- */
 /* defined when included from lib/bt-exe.c */
@@ -174,6 +191,13 @@ ST_FUNC void tcc_run_free(TCCState *s1)
         DLLReference *ref = s1->loaded_dlls[i];
         if ( ref->handle )
 #ifdef _WIN32
+# if defined(__aarch64__)
+            /* Native ARM64 builds currently host libtcc with the UCRT while
+               generated PE code still imports msvcrt. Unloading msvcrt from
+               nested -run states corrupts teardown, so leave it process-wide. */
+            if (0 == PATHCMP(tcc_basename(ref->name), "msvcrt.dll"))
+                continue;
+# endif
             FreeLibrary((HMODULE)ref->handle);
 #else
             dlclose(ref->handle);
@@ -199,13 +223,67 @@ ST_FUNC void tcc_run_free(TCCState *s1)
 
 #define RT_EXIT_ZERO 0xE0E00E0E /* passed from longjmp instead of '0' */
 
+typedef struct TCCRunJmpBuf {
+    jmp_buf jb;
+} TCCRunJmpBuf;
+
+#ifdef _WIN32
+static char **rt_get_environ(void)
+{
+#ifdef __TINYC__
+    return NULL;
+#else
+    return environ;
+#endif
+}
+
+static wchar_t **rt_get_wenviron(void)
+{
+#ifdef __TINYC__
+    return NULL;
+#else
+    return _wenviron;
+#endif
+}
+#endif
+
+#ifdef _WIN32
+static void rt_flush_target_io(void)
+{
+    typedef int (__cdecl *rt_fflush_func_t)(void *);
+    static rt_fflush_func_t fn;
+    static int init;
+
+    if (!init) {
+        HMODULE dll = GetModuleHandleA("msvcrt.dll");
+        if (dll)
+            fn = (rt_fflush_func_t)(void *)GetProcAddress(dll, "fflush");
+        init = 1;
+    }
+    if (fn)
+        fn(NULL);
+}
+#endif
+
+static int tcc_run_setjmp(TCCState *s1, TCCRunJmpBuf *jb, const char *top_sym)
+{
+    _tcc_setjmp(s1, jb->jb, tcc_get_symbol(s1, top_sym), longjmp);
+    return setjmp(jb->jb);
+}
+
 /* launch the compiled program with the given arguments */
 LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 {
-    int (*prog_main)(int, char **, char **), ret;
+    int ret;
     const char *top_sym;
-    jmp_buf main_jb;
+    TCCRunJmpBuf main_jb;
+#ifdef _WIN32
+    int (*prog_main)(int, char **);
+#else
+    int (*prog_main)(int, char **, char **);
+#endif
 
+#ifndef _WIN32
 #if defined(__APPLE__)
     extern char ***_NSGetEnviron(void);
     char **envp = *_NSGetEnviron();
@@ -215,12 +293,17 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 #else
     char **envp = environ;
 #endif
+#endif
 
     /* tcc -dt -run ... nothing to do if no main() */
     if ((s1->dflag & 16) && (addr_t)-1 == get_sym_addr(s1, "main", 0, 1))
         return 0;
 
     tcc_add_symbol(s1, "__rt_exit", rt_exit);
+#ifdef _WIN32
+    tcc_add_symbol(s1, "__rt_get_environ", rt_get_environ);
+    tcc_add_symbol(s1, "__rt_get_wenviron", rt_get_wenviron);
+#endif
     s1->run_main = "_runmain", top_sym = "main";
     if (s1->elf_entryname)
         s1->run_main = top_sym = s1->elf_entryname;
@@ -247,12 +330,22 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     fflush(stdout);
     fflush(stderr);
 
-    ret = tcc_setjmp(s1, main_jb, tcc_get_symbol(s1, top_sym));
+    ret = tcc_run_setjmp(s1, &main_jb, top_sym);
     if (0 == ret) {
+#ifdef _WIN32
+        ret = prog_main(argc, argv);
+#else
         ret = prog_main(argc, argv, envp);
+#endif
     } else if (RT_EXIT_ZERO == ret) {
         ret = 0;
     }
+
+#ifdef _WIN32
+    rt_flush_target_io();
+#endif
+    fflush(stdout);
+    fflush(stderr);
 
     if (s1->dflag & 16 && ret) /* tcc -dt -run ... */
         fprintf(s1->ppfp, "[returns %d]\n", ret), fflush(s1->ppfp);
@@ -617,9 +710,14 @@ static void rt_exit(rt_frame *f, int code)
                 ((void (*)(void))p)();
         }
 #endif
+#if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+        rt_restore_context_from_jmpbuf(s->run_jb, code);
+        return;
+#else
         if (code == 0)
             code = RT_EXIT_ZERO;
         ((void(*)(void*,int))s->run_lj)(s->run_jb, code);
+#endif
     }
     exit(code);
 }
@@ -649,6 +747,25 @@ static int rt_printf(const char *fmt, ...)
     r = rt_vprintf(fmt, ap);
     va_end(ap);
     return r;
+}
+
+static const char *rt_backtrace_format(const char *fmt, char *skip, int *one)
+{
+    const char *a, *b;
+
+    skip[0] = 0;
+    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
+        size_t len = b - a;
+        if (len >= 40)
+            len = 39;
+        memcpy(skip, a, len);
+        skip[len] = 0;
+        fmt = b + 1;
+    }
+    *one = 0;
+    if (fmt[0] == '\001')
+        ++fmt, *one = 1;
+    return fmt;
 }
 
 static char *rt_elfsym(rt_context *rc, addr_t wanted_pc, addr_t *func_addr)
@@ -1083,27 +1200,17 @@ found:
 #ifndef CONFIG_TCC_BACKTRACE_ONLY
 static
 #endif
-int _tcc_backtrace(rt_frame *f, const char *fmt, va_list ap)
+int _tcc_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
 {
     rt_context *rc, *rc2;
     addr_t pc;
-    char skip[40], msg[200];
+    char skip[40];
     int i, level, ret, n, one;
-    const char *a, *b;
+    const char *a;
     bt_info bi;
     addr_t (*getinfo)(rt_context*, addr_t, bt_info*);
 
-    skip[0] = 0;
-    /* If fmt is like "^file.c^..." then skip calls from 'file.c' */
-    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
-        memcpy(skip, a, b - a), skip[b - a] = 0;
-        fmt = b + 1;
-    }
-    one = 0;
-    /* hack for bcheck.c:dprintf(): one level, no newline */
-    if (fmt[0] == '\001')
-        ++fmt, one = 1;
-    vsnprintf(msg, sizeof msg, fmt, ap);
+    rt_backtrace_format(fmt, skip, &one);
 
     rt_wait_sem();
     rc = g_rc;
@@ -1176,6 +1283,21 @@ int _tcc_backtrace(rt_frame *f, const char *fmt, va_list ap)
     return 0;
 }
 
+#ifndef CONFIG_TCC_BACKTRACE_ONLY
+static
+#endif
+int _tcc_backtrace(rt_frame *f, const char *fmt, va_list ap)
+{
+    char msg[200];
+    char skip[40];
+    int one;
+    const char *fmt0 = fmt;
+
+    fmt = rt_backtrace_format(fmt, skip, &one);
+    vsnprintf(msg, sizeof msg, fmt, ap);
+    return _tcc_backtrace_msg(f, fmt0, msg);
+}
+
 /* emit a run time error at position 'pc' */
 static int rt_error(rt_frame *f, const char *fmt, ...)
 {
@@ -1201,7 +1323,11 @@ static int rt_error(rt_frame *f, const char *fmt, ...)
 /* translate from ucontext_t* to internal rt_context * */
 static void rt_getcontext(ucontext_t *uc, rt_frame *rc)
 {
-#if defined _WIN64
+#if defined _WIN64 && defined __aarch64__
+    rc->ip = uc->Pc;      /* Program Counter */
+    rc->fp = uc->Fp;      /* Frame Pointer (X29) */
+    rc->sp = uc->Sp;      /* Stack Pointer (X30 is LR, but SP is separate) */
+#elif defined _WIN64
     rc->ip = uc->Rip;
     rc->fp = uc->Rbp;
     rc->sp = uc->Rsp;
@@ -1367,10 +1493,62 @@ static void set_exception_handler(void)
 
 #else /* WIN32 */
 
+static PVOID rt_exception_handler;
+
+#if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+typedef VOID (__cdecl *rt_restore_context_func_t)(PCONTEXT, struct _EXCEPTION_RECORD *);
+
+static rt_restore_context_func_t rt_get_restore_context_func(void)
+{
+    static rt_restore_context_func_t fn;
+
+    if (!fn) {
+        HMODULE dll = GetModuleHandleA("ntdll.dll");
+        if (dll)
+            fn = (rt_restore_context_func_t)(void *)GetProcAddress(dll, "RtlRestoreContext");
+    }
+    return fn;
+}
+
+static void rt_restore_context_from_jmpbuf(void *p_jmp_buf, int code)
+{
+    int i;
+    _JUMP_BUFFER *jb = (_JUMP_BUFFER *)p_jmp_buf;
+    CONTEXT ctx;
+    rt_restore_context_func_t fn;
+
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.ContextFlags = CONTEXT_FULL;
+    ctx.X[0] = code ? code : RT_EXIT_ZERO;
+    ctx.X[19] = jb->X19;
+    ctx.X[20] = jb->X20;
+    ctx.X[21] = jb->X21;
+    ctx.X[22] = jb->X22;
+    ctx.X[23] = jb->X23;
+    ctx.X[24] = jb->X24;
+    ctx.X[25] = jb->X25;
+    ctx.X[26] = jb->X26;
+    ctx.X[27] = jb->X27;
+    ctx.X[28] = jb->X28;
+    ctx.Fp = jb->Fp;
+    ctx.Lr = jb->Lr;
+    ctx.Sp = jb->Sp;
+    ctx.Pc = jb->Lr;
+    for (i = 0; i < 8; ++i)
+        memcpy(&ctx.V[8 + i], &jb->D[i], sizeof(jb->D[i]));
+    ctx.Fpcr = jb->Fpcr;
+    ctx.Fpsr = jb->Fpsr;
+    fn = rt_get_restore_context_func();
+    if (fn)
+        fn(&ctx, NULL);
+}
+#endif
+
 /* signal handler for fatal errors */
 static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
 {
     rt_frame f;
+    TCCState *s;
     unsigned code;
     rt_getcontext(ex_info->ContextRecord, &f);
 
@@ -1393,6 +1571,21 @@ static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
         rt_error(&f, "caught exception %08x", code);
         break;
     }
+#if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+    rt_wait_sem();
+    s = rt_find_state(&f);
+    rt_post_sem();
+    if (s && s->run_lj) {
+#ifdef CONFIG_TCC_BCHECK
+        if (f.fp) {
+            void *p = tcc_get_symbol(s, "__bound_exit");
+            if (p)
+                ((void (*)(void))p)();
+        }
+#endif
+        rt_restore_context_from_jmpbuf(s->run_jb, 255);
+    }
+#endif
     rt_exit(&f, 255);
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -1400,7 +1593,11 @@ static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
 /* Generate a stack backtrace when a CPU exception occurs. */
 static void set_exception_handler(void)
 {
+    if (!rt_exception_handler)
+        rt_exception_handler = AddVectoredExceptionHandler(1, cpu_exception_handler);
+#if !defined(_WIN64) || !defined(__aarch64__) || defined(CONFIG_TCC_BACKTRACE_ONLY)
     SetUnhandledExceptionFilter(cpu_exception_handler);
+#endif
 }
 
 #endif
