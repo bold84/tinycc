@@ -179,7 +179,7 @@ if exist libtcc.dll .\tcc -impdef libtcc.dll -o libtcc\libtcc.def
 @if errorlevel 1 goto :the_end
 
 :lib
-@rem ARM64 now supported with implemented assembler
+@rem ARM64 assembler files and basic inline asm strings are supported here.
 call :make_lib %T% || goto :the_end
 @if exist %PX%-tcc.exe call :make_lib %TX% %PX%- || goto :the_end
 

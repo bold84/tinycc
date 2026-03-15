@@ -400,6 +400,11 @@ static int tcc_run_via_temp_exe(TCCState *s, int argc, char **argv)
     DeleteFileA(tmppath);
     return ret;
 }
+
+static int tcc_run_requires_inprocess(const TCCState *s)
+{
+    return (s->dflag & 16) || s->run_stdin != NULL;
+}
 #endif
 
 int main(int argc, char **argv)
@@ -513,9 +518,7 @@ redo:
         if (s->output_type == TCC_OUTPUT_MEMORY) {
 #ifdef TCC_IS_NATIVE
 #if defined(_WIN32) && defined(__aarch64__)
-            if (s->dflag & 16)
-                ret = tcc_run(s, argc, argv);
-            else if (first_file && 0 == strcmp(tcc_basename(first_file), "tcc.c"))
+            if (tcc_run_requires_inprocess(s))
                 ret = tcc_run(s, argc, argv);
             else
                 ret = tcc_run_via_temp_exe(s, argc, argv);
