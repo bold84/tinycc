@@ -77,7 +77,7 @@ endif
 TCCTEST_REF = test.ref
 ifeq ($(ARCH)-$(TARGETOS),arm64-WIN32)
 TCCTEST_REF = test.ref.win32-arm64
-else ifeq ($(ARCH)-$(TARGETOS)-$(HOST_WIN_UCRT),x86_64-WIN32-yes)
+else ifeq ($(ARCH)-$(TARGETOS)-$(CC_NAME)-$(HOST_WIN_UCRT),x86_64-WIN32-clang-yes)
 # CLANG64/UCRT generates a different host reference than the msvcrt-backed TCC runtime.
 TCCTEST_REF = test.ref.win32-x86_64-ucrt
 endif

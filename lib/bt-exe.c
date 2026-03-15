@@ -63,25 +63,6 @@ void __bt_init(rt_context *p, int is_exe)
 }
 
 #ifdef _WIN32
-static const char *bt_backtrace_format(const char *fmt, char *skip, int *one)
-{
-    const char *a, *b;
-
-    skip[0] = 0;
-    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
-        size_t len = b - a;
-        if (len >= 40)
-            len = 39;
-        memcpy(skip, a, len);
-        skip[len] = 0;
-        fmt = b + 1;
-    }
-    *one = 0;
-    if (fmt[0] == '\001')
-        ++fmt, *one = 1;
-    return fmt;
-}
-
 static int bt_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
 {
     rt_context *rc, *rc2;
@@ -92,7 +73,7 @@ static int bt_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
     bt_info bi;
     addr_t (*getinfo)(rt_context*, addr_t, bt_info*);
 
-    bt_backtrace_format(fmt, skip, &one);
+    rt_backtrace_format(fmt, skip, &one);
 
     rt_wait_sem();
     rc = g_rc;

@@ -31,7 +31,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: make & test tcc (aarch64-osx)
-      run: ./configure && make && make test -k
+      run: |
+        ./configure
+        make
+        make test -k
+        make -C tests/tests2 tests2.133
 
   test-x86_64-win32:
     runs-on: windows-2025
@@ -62,6 +66,22 @@ jobs:
         fc /n test_pe_field_alignment.out ..\win32\test_pe_field_alignment.ref
         .\tcc -I.. libtcc.dll -v ../tests/libtcc_test.c -o libtest.exe && .\libtest.exe
         .\tcc -I.. libtcc.dll -run ../tests/libtcc_test.c
+
+  test-x86_64-win32-clang64:
+    runs-on: windows-2025
+    timeout-minutes: 6
+    steps:
+    - uses: actions/checkout@v4
+    - name: make & test tcc (x86_64-win32-clang64)
+      shell: cmd
+      run: |
+        echo ::group:: setup msys clang64
+        set MSYS2_PATH_TYPE=inherit
+        set MSYSTEM=CLANG64
+        set CHERE_INVOKING=yes
+        C:\msys64\usr\bin\bash -l -c "pacman -S --noconfirm mingw-w64-clang-x86_64-clang"
+        echo ::endgroup::
+        C:\msys64\usr\bin\bash -l -c "./configure --cc=clang && make && make -C tests test3"
 
   test-i386-win32:
     runs-on: windows-2025
