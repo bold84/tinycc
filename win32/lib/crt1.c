@@ -37,6 +37,11 @@ int __cdecl get_tenviron(_TCHAR ***penv);
 void __cdecl __set_app_type(int apptype);
 unsigned int __cdecl _controlfp(unsigned int new_value, unsigned int mask);
 extern int _tmain(int argc, _TCHAR * argv[], _TCHAR * env[]);
+#ifdef UNICODE
+__attribute__((weak)) wchar_t **__cdecl __rt_get_wenviron(void);
+#else
+__attribute__((weak)) char **__cdecl __rt_get_environ(void);
+#endif
 
 #include "crtinit.c"
 
@@ -83,6 +88,31 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
 {
     int ret;
     _TCHAR **env = NULL;
+#ifdef UNICODE
+    if (__rt_get_wenviron) {
+        env = __rt_get_wenviron();
+#if defined __i386__ || defined __x86_64__
+        _controlfp(_PC_53, _MCW_PC);
+#endif
+        run_ctors(argc, (_TCHAR **)argv, env);
+        ret = _tmain(argc, (_TCHAR **)argv, env);
+        run_dtors();
+        __run_on_exit(ret);
+        return ret;
+    }
+#else
+    if (__rt_get_environ) {
+        env = __rt_get_environ();
+#if defined __i386__ || defined __x86_64__
+        _controlfp(_PC_53, _MCW_PC);
+#endif
+        run_ctors(argc, (_TCHAR **)argv, env);
+        ret = _tmain(argc, (_TCHAR **)argv, env);
+        run_dtors();
+        __run_on_exit(ret);
+        return ret;
+    }
+#endif
 #ifdef UNICODE
     _startupinfo start_info = {0};
 

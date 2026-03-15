@@ -19,6 +19,9 @@
  */
 
 #include "tcc.h"
+#ifdef _WIN32
+#include <stdlib.h>
+#endif
 
 /* only native compiler supports -run */
 #ifdef TCC_IS_NATIVE
@@ -174,6 +177,13 @@ ST_FUNC void tcc_run_free(TCCState *s1)
         DLLReference *ref = s1->loaded_dlls[i];
         if ( ref->handle )
 #ifdef _WIN32
+# if defined(__aarch64__)
+            /* Native ARM64 builds currently host libtcc with the UCRT while
+               generated PE code still imports msvcrt. Unloading msvcrt from
+               nested -run states corrupts teardown, so leave it process-wide. */
+            if (0 == PATHCMP(tcc_basename(ref->name), "msvcrt.dll"))
+                continue;
+# endif
             FreeLibrary((HMODULE)ref->handle);
 #else
             dlclose(ref->handle);
@@ -202,6 +212,26 @@ ST_FUNC void tcc_run_free(TCCState *s1)
 typedef struct TCCRunJmpBuf {
     jmp_buf jb;
 } TCCRunJmpBuf;
+
+#ifdef _WIN32
+static char **rt_get_environ(void)
+{
+#ifdef __TINYC__
+    return NULL;
+#else
+    return environ;
+#endif
+}
+
+static wchar_t **rt_get_wenviron(void)
+{
+#ifdef __TINYC__
+    return NULL;
+#else
+    return _wenviron;
+#endif
+}
+#endif
 
 static int tcc_run_setjmp(TCCState *s1, TCCRunJmpBuf *jb, const char *top_sym)
 {
@@ -238,6 +268,10 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
         return 0;
 
     tcc_add_symbol(s1, "__rt_exit", rt_exit);
+#ifdef _WIN32
+    tcc_add_symbol(s1, "__rt_get_environ", rt_get_environ);
+    tcc_add_symbol(s1, "__rt_get_wenviron", rt_get_wenviron);
+#endif
     s1->run_main = "_runmain", top_sym = "main";
     if (s1->elf_entryname)
         s1->run_main = top_sym = s1->elf_entryname;
@@ -1416,14 +1450,62 @@ static void set_exception_handler(void)
 
 #else /* WIN32 */
 
-#ifdef CONFIG_TCC_BACKTRACE_ONLY
 static PVOID rt_exception_handler;
+
+#if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+typedef VOID (__cdecl *rt_restore_context_func_t)(PCONTEXT, struct _EXCEPTION_RECORD *);
+
+static rt_restore_context_func_t rt_get_restore_context_func(void)
+{
+    static rt_restore_context_func_t fn;
+
+    if (!fn) {
+        HMODULE dll = GetModuleHandleA("ntdll.dll");
+        if (dll)
+            fn = (rt_restore_context_func_t)(void *)GetProcAddress(dll, "RtlRestoreContext");
+    }
+    return fn;
+}
+
+static void rt_restore_context_from_jmpbuf(void *p_jmp_buf, int code)
+{
+    int i;
+    _JUMP_BUFFER *jb = (_JUMP_BUFFER *)p_jmp_buf;
+    CONTEXT ctx;
+    rt_restore_context_func_t fn;
+
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.ContextFlags = CONTEXT_FULL;
+    ctx.X[0] = code ? code : RT_EXIT_ZERO;
+    ctx.X[19] = jb->X19;
+    ctx.X[20] = jb->X20;
+    ctx.X[21] = jb->X21;
+    ctx.X[22] = jb->X22;
+    ctx.X[23] = jb->X23;
+    ctx.X[24] = jb->X24;
+    ctx.X[25] = jb->X25;
+    ctx.X[26] = jb->X26;
+    ctx.X[27] = jb->X27;
+    ctx.X[28] = jb->X28;
+    ctx.Fp = jb->Fp;
+    ctx.Lr = jb->Lr;
+    ctx.Sp = jb->Sp;
+    ctx.Pc = jb->Lr;
+    for (i = 0; i < 8; ++i)
+        memcpy(&ctx.V[8 + i], &jb->D[i], sizeof(jb->D[i]));
+    ctx.Fpcr = jb->Fpcr;
+    ctx.Fpsr = jb->Fpsr;
+    fn = rt_get_restore_context_func();
+    if (fn)
+        fn(&ctx, NULL);
+}
 #endif
 
 /* signal handler for fatal errors */
 static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
 {
     rt_frame f;
+    TCCState *s;
     unsigned code;
     rt_getcontext(ex_info->ContextRecord, &f);
 
@@ -1446,6 +1528,21 @@ static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
         rt_error(&f, "caught exception %08x", code);
         break;
     }
+#if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
+    rt_wait_sem();
+    s = rt_find_state(&f);
+    rt_post_sem();
+    if (s && s->run_lj) {
+#ifdef CONFIG_TCC_BCHECK
+        if (f.fp) {
+            void *p = tcc_get_symbol(s, "__bound_exit");
+            if (p)
+                ((void (*)(void))p)();
+        }
+#endif
+        rt_restore_context_from_jmpbuf(s->run_jb, 255);
+    }
+#endif
     rt_exit(&f, 255);
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -1453,11 +1550,11 @@ static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
 /* Generate a stack backtrace when a CPU exception occurs. */
 static void set_exception_handler(void)
 {
-#ifdef CONFIG_TCC_BACKTRACE_ONLY
     if (!rt_exception_handler)
         rt_exception_handler = AddVectoredExceptionHandler(1, cpu_exception_handler);
-#endif
+#if !defined(_WIN64) || !defined(__aarch64__) || defined(CONFIG_TCC_BACKTRACE_ONLY)
     SetUnhandledExceptionFilter(cpu_exception_handler);
+#endif
 }
 
 #endif
