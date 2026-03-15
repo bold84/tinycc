@@ -832,7 +832,7 @@ typedef DWORD LCID;
   typedef ULONG_PTR KSPIN_LOCK;
   typedef KSPIN_LOCK *PKSPIN_LOCK;
 
-#ifdef _AMD64_
+#if defined(_AMD64_) || defined(_ARM64_)
 
 #if defined(__x86_64) && !defined(RC_INVOKED)
 

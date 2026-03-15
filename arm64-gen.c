@@ -49,7 +49,7 @@
 
 #define MAX_ALIGN 16
 
-#ifndef TCC_TARGET_MACHO
+#if !defined(TCC_TARGET_MACHO) && !defined(TCC_TARGET_PE)
 #define CHAR_IS_UNSIGNED
 #endif
 
@@ -869,9 +869,11 @@ static unsigned long arm64_pcs_aux(int variadic, int n, CType **type, unsigned l
 #elif defined(TCC_TARGET_PE)
         if (variadic && i >= variadic && (hfa || is_float(type[i]->t))) {
             hfa = 0;
-            win_vararg_float = 1;
-            size = 8;
-            align = 8;
+            if (is_float(type[i]->t)) {
+                win_vararg_float = 1;
+                size = 8;
+                align = 8;
+            }
         }
 #endif
         if (hfa)
@@ -1425,6 +1427,23 @@ ST_FUNC void gen_va_arg(CType *t)
     uint32_t r0, r1;
 
 #ifdef TCC_TARGET_PE
+    uint32_t slot = size;
+    int indirect = 0;
+
+    if ((t->t & VT_BTYPE) == VT_STRUCT) {
+        if (size > 16) {
+            slot = 8;
+            indirect = 1;
+        } else {
+            slot = (size + 7) & -8;
+        }
+    } else if (slot > 16) {
+        slot = 8;
+        indirect = 1;
+    } else if (slot < 8) {
+        slot = 8;
+    }
+
     gaddrof();
     r0 = intr(gv(RC_INT));
     r1 = get_reg(RC_INT);
@@ -1432,10 +1451,22 @@ ST_FUNC void gen_va_arg(CType *t)
     r1 = intr(r1);
 
     o(0xf9400000 | r1 | r0 << 5); // ldr x(r1),[x(r0)] // ap
-    o(0x910023de | r1 << 5); // add x30,x(r1),#8
-    o(0xf900001e | r0 << 5); // str x30,[x(r0)] // ap += 8
+    if (slot) {
+        if (slot == 16) {
+            o(0x910363be); // add x30,x29,#216
+            o(0xeb1e003f | r1 << 5); // cmp x(r1),x30
+            o(0x54000041); // b.ne .+8
+            o(0x910383a0 | r1 | 29 << 5); // add x(r1),x29,#224
+        }
+        if (align == 16) {
+            o(0x91003c00 | r1 | r1 << 5); // add x(r1),x(r1),#15
+            o(0x927cec00 | r1 | r1 << 5); // and x(r1),x(r1),#-16
+        }
+        o(0x9100001e | r1 << 5 | slot << 10); // add x30,x(r1),#(slot)
+        o(0xf900001e | r0 << 5); // str x30,[x(r0)] // ap += slot
+    }
 
-    if (size > 8 || (size & (size - 1)))
+    if (indirect)
         o(0xf9400000 | r1 | r1 << 5); // ldr x(r1),[x(r1)]
     return;
 #endif

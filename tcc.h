@@ -955,6 +955,7 @@ struct TCCState {
 # if defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
     Section *uw_pdata;
     int uw_sym;
+    int uw_xsym;
     unsigned uw_offs;
 # endif
 #endif

@@ -199,13 +199,29 @@ ST_FUNC void tcc_run_free(TCCState *s1)
 
 #define RT_EXIT_ZERO 0xE0E00E0E /* passed from longjmp instead of '0' */
 
+typedef struct TCCRunJmpBuf {
+    jmp_buf jb;
+} TCCRunJmpBuf;
+
+static int tcc_run_setjmp(TCCState *s1, TCCRunJmpBuf *jb, const char *top_sym)
+{
+    _tcc_setjmp(s1, jb->jb, tcc_get_symbol(s1, top_sym), longjmp);
+    return setjmp(jb->jb);
+}
+
 /* launch the compiled program with the given arguments */
 LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 {
-    int (*prog_main)(int, char **, char **), ret;
+    int ret;
     const char *top_sym;
-    jmp_buf main_jb;
+    TCCRunJmpBuf main_jb;
+#ifdef _WIN32
+    int (*prog_main)(int, char **);
+#else
+    int (*prog_main)(int, char **, char **);
+#endif
 
+#ifndef _WIN32
 #if defined(__APPLE__)
     extern char ***_NSGetEnviron(void);
     char **envp = *_NSGetEnviron();
@@ -214,6 +230,7 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     char **envp = environ;
 #else
     char **envp = environ;
+#endif
 #endif
 
     /* tcc -dt -run ... nothing to do if no main() */
@@ -247,9 +264,13 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     fflush(stdout);
     fflush(stderr);
 
-    ret = tcc_setjmp(s1, main_jb, tcc_get_symbol(s1, top_sym));
+    ret = tcc_run_setjmp(s1, &main_jb, top_sym);
     if (0 == ret) {
+#ifdef _WIN32
+        ret = prog_main(argc, argv);
+#else
         ret = prog_main(argc, argv, envp);
+#endif
     } else if (RT_EXIT_ZERO == ret) {
         ret = 0;
     }

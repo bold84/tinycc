@@ -1978,7 +1978,7 @@ ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
    alloc_m:     11000iii xxxxxxxx - sub sp,sp,#X*16 (up to 32KB)
    end:         11100100  - end of unwind codes
 */
-static unsigned pe_add_uwwind_info(TCCState *s1)
+static Section *pe_add_uwwind_info(TCCState *s1)
 {
     Section *s;
 
@@ -1993,45 +1993,73 @@ static unsigned pe_add_uwwind_info(TCCState *s1)
     }
     if (0 == s1->uw_sym)
         s1->uw_sym = put_elf_sym(symtab_section, 0, 0, 0, 0,
+                                  text_section->sh_num, ".uw_text_base");
+    if (0 == s1->uw_xsym)
+        s1->uw_xsym = put_elf_sym(symtab_section, 0, 0, 0, 0,
                                   s->sh_num, ".uw_base");
-    if (0 == s1->uw_offs) {
-        /* TCC ARM64 prolog: stp x29,lr,[sp,#-224]!; mov x29,sp; sub sp,sp,#N
-           Unwind codes (reverse order): alloc_s, set_fp, save_fplr_x, end */
-        static const unsigned char uw_info[] = {
-            /* .xdata header word 0:
-               FunctionLength[17:0]=0 (patched), Vers[1:0]=0, X=0, E=1,
-               EpilogCount[4:0]=0, CodeWords[4:0]=1 */
-            0x00, 0x00, 0x00, 0x01,
-            /* Unwind codes (4 bytes, padded): */
-            0xE1,       /* set_fp: mov x29,sp */
-            0x9B,       /* save_fplr_x: stp x29,lr,[sp,#-224]! (224/8-1=27=0x1B) */
-            0xE4,       /* end */
-            0xE3,       /* nop (padding) */
-        };
-
-        unsigned char *p;
-
-        section_ptr_add(s, -s->data_offset & 3); /* align */
-        s1->uw_offs = s->data_offset;
-        p = section_ptr_add(s, sizeof uw_info);
-        memcpy(p, uw_info, sizeof uw_info);
-    }
-    return s1->uw_offs;
+    return s;
 }
 
 ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
 {
     TCCState *s1 = tcc_state;
-    Section *pd;
-    unsigned o, n, d;
+    Section *pd, *xd;
+    unsigned o, n, d, code_bytes, func_len, stack_slots;
+    unsigned char *q;
+    uint32_t header;
     struct {
         DWORD BeginAddress;
         DWORD EndAddress;
         DWORD UnwindData;
     } *p;
 
-    d = pe_add_uwwind_info(s1);
+    xd = pe_add_uwwind_info(s1);
     pd = s1->uw_pdata;
+
+    stack = (stack + 15) & ~15;
+    stack_slots = stack >> 4;
+    func_len = (end - start) >> 2;
+    code_bytes = 0;
+    if (stack_slots) {
+        if (stack_slots <= 31) {
+            code_bytes += 1;
+        } else if (stack_slots <= 0x7ff) {
+            code_bytes += 2;
+        } else {
+            code_bytes += 4;
+        }
+    }
+    code_bytes += 3; /* set_fp, save_fplr_x, end */
+    code_bytes = (code_bytes + 3) & ~3;
+
+    section_ptr_add(xd, -xd->data_offset & 3);
+    d = xd->data_offset;
+    q = section_ptr_add(xd, 4 + code_bytes);
+
+    /* Full ARM64 xdata header: E=1 with one epilog and no exception handler. */
+    header = (func_len & 0x3ffff) | (1u << 21) | ((code_bytes >> 2) << 27);
+    write32le(q, header);
+    q += 4;
+
+    if (stack_slots) {
+        if (stack_slots <= 31) {
+            *q++ = stack_slots; /* alloc_s */
+        } else if (stack_slots <= 0x7ff) {
+            *q++ = 0xC0 | (stack_slots >> 8); /* alloc_m */
+            *q++ = stack_slots & 0xff;
+        } else {
+            *q++ = 0xE0; /* alloc_l */
+            *q++ = (stack_slots >> 16) & 0xff;
+            *q++ = (stack_slots >> 8) & 0xff;
+            *q++ = stack_slots & 0xff;
+        }
+    }
+    *q++ = 0xE1; /* set_fp */
+    *q++ = 0x9B; /* save_fplr_x: stp x29,lr,[sp,#-224]! */
+    *q++ = 0xE4; /* end */
+    while ((unsigned)(q - (xd->data + d + 4)) < code_bytes)
+        *q++ = 0xE3; /* nop padding */
+
     o = pd->data_offset;
     p = section_ptr_add(pd, sizeof *p);
 
@@ -2039,8 +2067,9 @@ ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
     p->EndAddress = end;
     p->UnwindData = d;
 
-    for (n = o + sizeof *p; o < n; o += sizeof p->BeginAddress)
+    for (n = o + 2 * sizeof p->BeginAddress; o < n; o += sizeof p->BeginAddress)
         put_elf_reloc(symtab_section, pd, o, R_XXX_RELATIVE, s1->uw_sym);
+    put_elf_reloc(symtab_section, pd, n, R_XXX_RELATIVE, s1->uw_xsym);
 }
 #endif
 /* ------------------------------------------------------------- */

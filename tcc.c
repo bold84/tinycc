@@ -23,6 +23,9 @@
 #endif
 
 #include "tcc.h"
+#if defined(_WIN32) && defined(__aarch64__)
+# include <process.h>
+#endif
 #if ONE_SOURCE
 # include "libtcc.c"
 #endif
@@ -285,6 +288,65 @@ static unsigned getclock_ms(void)
 #endif
 }
 
+#if defined(_WIN32) && defined(__aarch64__)
+static int tcc_run_via_temp_exe(TCCState *s, int argc, char **argv)
+{
+    char tmpdir[MAX_PATH], tmppath[MAX_PATH];
+    const char **run_argv = NULL;
+    char *saved_outfile, *tmp_outfile;
+    int saved_output_type, ret, i, saved_errno;
+    TCCState *s1 = s;
+
+    if (!GetTempPathA(sizeof tmpdir, tmpdir))
+        return tcc_error_noabort("could not get temp directory"), -1;
+    if (!GetTempFileNameA(tmpdir, "tcc", 0, tmppath))
+        return tcc_error_noabort("could not create temp file name"), -1;
+    DeleteFileA(tmppath);
+    strcpy(tcc_fileextension(tmppath), ".exe");
+
+    saved_outfile = s->outfile;
+    saved_output_type = s->output_type;
+    tmp_outfile = tcc_strdup(tmppath);
+    if (!tmp_outfile)
+        return -1;
+    s->outfile = tmp_outfile;
+    s->output_type = TCC_OUTPUT_EXE;
+
+    ret = tcc_output_file(s, s->outfile);
+    s->output_type = saved_output_type;
+    s->outfile = saved_outfile;
+    if (ret < 0) {
+        tcc_free(tmp_outfile);
+        DeleteFileA(tmppath);
+        return ret;
+    }
+
+    run_argv = tcc_malloc((argc + 1) * sizeof(*run_argv));
+    if (!run_argv) {
+        tcc_free(tmp_outfile);
+        DeleteFileA(tmppath);
+        return -1;
+    }
+    run_argv[0] = argc > 0 ? argv[0] : tmppath;
+    for (i = 1; i < argc; ++i)
+        run_argv[i] = argv[i];
+    run_argv[argc] = NULL;
+
+    errno = 0;
+    _doserrno = 0;
+    SetLastError(0);
+    ret = (int)_spawnv(_P_WAIT, tmppath, run_argv);
+    saved_errno = errno;
+    if (ret == -1 && (saved_errno || _doserrno || GetLastError()))
+        tcc_error_noabort("could not run '%s'", tmppath), ret = 1;
+
+    tcc_free(run_argv);
+    tcc_free(tmp_outfile);
+    DeleteFileA(tmppath);
+    return ret;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     TCCState *s, *s1;
@@ -395,7 +457,11 @@ redo:
     } else if (0 == ret) {
         if (s->output_type == TCC_OUTPUT_MEMORY) {
 #ifdef TCC_IS_NATIVE
+#if defined(_WIN32) && defined(__aarch64__)
+            ret = tcc_run_via_temp_exe(s, argc, argv);
+#else
             ret = tcc_run(s, argc, argv);
+#endif
 #endif
         } else {
             if (!s->outfile)
