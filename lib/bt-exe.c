@@ -11,35 +11,18 @@
 # define __declspec(n)
 #endif
 
-#ifdef _WIN64
-static void bt_init_pe_prog_base(rt_context *p)
-{
-    MEMORY_BASIC_INFORMATION mbi;
-    addr_t imagebase;
-
-    if (!p->prog_base)
-        return;
-    if (!VirtualQuery(p, &mbi, sizeof(mbi)) || !mbi.AllocationBase)
-        return;
-    imagebase = (addr_t)mbi.AllocationBase - p->prog_base;
-    p->prog_base = (addr_t)mbi.AllocationBase - (imagebase & 0xffffffffu);
-}
-#endif
-
 __declspec(dllexport)
 void __bt_init(rt_context *p, int is_exe)
 {
     __attribute__((weak)) int main();
     __attribute__((weak)) void __bound_init(void*, int);
 
+    //fprintf(stderr, "__bt_init %d %p %p %p\n", is_exe, p, p->stab_sym, p->bounds_start), fflush(stderr);
+
     /* call __bound_init here due to redirection of sigaction */
     /* needed to add global symbols */
     if (p->bounds_start)
 	__bound_init(p->bounds_start, -1);
-
-#ifdef _WIN64
-    bt_init_pe_prog_base(p);
-#endif
 
     /* add to chain */
     rt_wait_sem();
@@ -50,12 +33,6 @@ void __bt_init(rt_context *p, int is_exe)
         p->top_func = main;
         set_exception_handler();
     }
-}
-
-__declspec(dllexport)
-int __bt_backtrace(rt_frame *f, const char *msg)
-{
-    return _tcc_backtrace_msg(f, msg, msg);
 }
 
 __declspec(dllexport)
