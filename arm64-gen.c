@@ -862,13 +862,6 @@ static unsigned long arm64_pcs_aux(int variadic, int n, CType **type, unsigned l
     unsigned long ns = 32; // next stack offset
     int i;
 
-#if defined(TCC_TARGET_MACHO)
-    /* Old-style / unprototyped calls must follow the variadic stack rules
-       from the first argument on Darwin. */
-    if (variadic < 0)
-        nx = 8, nv = 8;
-#endif
-
     for (i = 0; i < n; i++) {
         int hfa = arm64_hfa(type[i], 0);
         int win_vararg_float = 0;
@@ -1111,8 +1104,10 @@ ST_FUNC void gfunc_call(int nb_args)
 
     if (variadic)
         pcs_variadic = var_nb_arg;
+#ifdef TCC_TARGET_PE
     else if (old_style)
         pcs_variadic = ARM64_PCS_ALL_VARARGS;
+#endif
     stack = arm64_pcs(pcs_variadic, nb_args, t, a);
 
     // Allocate space for structs replaced by pointer:
