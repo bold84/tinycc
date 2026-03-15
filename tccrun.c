@@ -181,10 +181,7 @@ ST_FUNC void tcc_run_free(TCCState *s1)
         if ( ref->handle )
 #ifdef _WIN32
 # if defined(__aarch64__)
-            /* Native ARM64 builds currently host libtcc with the UCRT while
-               generated PE code still imports msvcrt. Unloading msvcrt from
-               nested -run states corrupts teardown, so leave it process-wide. */
-            if (0 == PATHCMP(tcc_basename(ref->name), "msvcrt.dll"))
+            if (ref->process_scoped)
                 continue;
 # endif
             FreeLibrary((HMODULE)ref->handle);
@@ -215,20 +212,28 @@ ST_FUNC void tcc_run_free(TCCState *s1)
 #ifdef _WIN32
 static char **rt_get_environ(void)
 {
-#ifdef __TINYC__
-    return NULL;
+    char **env = NULL;
+#ifdef _UCRT
+    char ***penv = __p__environ();
+    if (penv)
+        env = *penv;
 #else
-    return environ;
+    _get_environ(&env);
 #endif
+    return env;
 }
 
 static wchar_t **rt_get_wenviron(void)
 {
-#ifdef __TINYC__
-    return NULL;
+    wchar_t **env = NULL;
+#ifdef _UCRT
+    wchar_t ***penv = __p__wenviron();
+    if (penv)
+        env = *penv;
 #else
-    return _wenviron;
+    _get_wenviron(&env);
 #endif
+    return env;
 }
 #endif
 
@@ -260,6 +265,8 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 #if defined(__APPLE__)
     extern char ***_NSGetEnviron(void);
     char **envp = *_NSGetEnviron();
+#elif defined(_WIN32)
+    char **envp = rt_get_environ();
 #elif defined(__OpenBSD__) || defined(__NetBSD__)  || defined(__FreeBSD__)
     extern char **environ;
     char **envp = environ;
@@ -1442,6 +1449,23 @@ static PVOID rt_exception_handler;
 #if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
 typedef VOID (__cdecl *rt_restore_context_func_t)(PCONTEXT, struct _EXCEPTION_RECORD *);
 
+#define RT_ARM64_CONTEXT_ASSERT(name, expr) \
+    typedef char rt_arm64_context_assert_##name[(expr) ? 1 : -1]
+RT_ARM64_CONTEXT_ASSERT(size, sizeof(CONTEXT) == 0x390);
+RT_ARM64_CONTEXT_ASSERT(flags_offset, offsetof(CONTEXT, ContextFlags) == 0x000);
+RT_ARM64_CONTEXT_ASSERT(x_offset, offsetof(CONTEXT, X) == 0x008);
+RT_ARM64_CONTEXT_ASSERT(fp_offset, offsetof(CONTEXT, Fp) == 0x0f0);
+RT_ARM64_CONTEXT_ASSERT(lr_offset, offsetof(CONTEXT, Lr) == 0x0f8);
+RT_ARM64_CONTEXT_ASSERT(sp_offset, offsetof(CONTEXT, Sp) == 0x100);
+RT_ARM64_CONTEXT_ASSERT(pc_offset, offsetof(CONTEXT, Pc) == 0x108);
+RT_ARM64_CONTEXT_ASSERT(v_offset, offsetof(CONTEXT, V) == 0x110);
+RT_ARM64_CONTEXT_ASSERT(v_slot_size, sizeof(((CONTEXT *)0)->V[0]) == 16);
+RT_ARM64_CONTEXT_ASSERT(fpcr_offset, offsetof(CONTEXT, Fpcr) == 0x310);
+RT_ARM64_CONTEXT_ASSERT(fpsr_offset, offsetof(CONTEXT, Fpsr) == 0x314);
+RT_ARM64_CONTEXT_ASSERT(bvr_offset, offsetof(CONTEXT, Bvr) == 0x338);
+RT_ARM64_CONTEXT_ASSERT(wvr_offset, offsetof(CONTEXT, Wvr) == 0x380);
+#undef RT_ARM64_CONTEXT_ASSERT
+
 static rt_restore_context_func_t rt_get_restore_context_func(void)
 {
     static rt_restore_context_func_t fn;
@@ -1479,7 +1503,7 @@ static void rt_restore_context_from_jmpbuf(void *p_jmp_buf, int code)
     ctx.Sp = jb->Sp;
     ctx.Pc = jb->Lr;
     for (i = 0; i < 8; ++i)
-        memcpy(&ctx.V[8 + i], &jb->D[i], sizeof(jb->D[i]));
+        memcpy(&ctx.V[8 + i].D[0], &jb->D[i], sizeof(jb->D[i]));
     ctx.Fpcr = jb->Fpcr;
     ctx.Fpsr = jb->Fpsr;
     fn = rt_get_restore_context_func();

@@ -1423,7 +1423,7 @@ typedef DWORD LCID;
 
   typedef PRUNTIME_FUNCTION (*PGET_RUNTIME_FUNCTION_CALLBACK)(DWORD64 ControlPc,PVOID Context);
 
-#ifdef _ARM64_
+#if defined(_ARM64_) || defined(__aarch64__)
 
 /* ARM64 Context Definition */
 #define CONTEXT_ARM64 0x00400000
@@ -1448,26 +1448,83 @@ typedef DWORD LCID;
 #define CONTEXT_ALL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT | CONTEXT_DEBUG)
 #endif
 
-#ifndef _ARM64_CONTEXT_DECLARED
-#define _ARM64_CONTEXT_DECLARED
-  typedef struct _CONTEXT {
-    DWORD64 ContextFlags;
-    DWORD64 X[29];
-    DWORD64 Fp;
-    DWORD64 Lr;
-    DWORD64 Sp;
-    DWORD64 Pc;
-    DWORD64 V[32];
-    DWORD Fpcr;
-    DWORD Fpsr;
-    DWORD Bcr[8];
-    DWORD Bvr[8];
-    DWORD Wcr[2];
-    DWORD Wvr[2];
-  } CONTEXT,*PCONTEXT;
+#ifndef ARM64_MAX_BREAKPOINTS
+#define ARM64_MAX_BREAKPOINTS 8
+#endif
+#ifndef ARM64_MAX_WATCHPOINTS
+#define ARM64_MAX_WATCHPOINTS 2
 #endif
 
-#endif /* _ARM64_ */
+#ifndef _ARM64_NT_NEON128_DECLARED
+#define _ARM64_NT_NEON128_DECLARED
+  typedef union _ARM64_NT_NEON128 {
+    struct {
+      ULONGLONG Low;
+      LONGLONG High;
+    } DUMMYSTRUCTNAME;
+    double D[2];
+    float S[4];
+    WORD H[8];
+    BYTE B[16];
+  } ARM64_NT_NEON128,*PARM64_NT_NEON128;
+#endif
+
+#ifndef _ARM64_CONTEXT_DECLARED
+#define _ARM64_CONTEXT_DECLARED
+  typedef struct DECLSPEC_ALIGN(16) _ARM64_NT_CONTEXT {
+    ULONG ContextFlags;
+    ULONG Cpsr;
+    union {
+      struct {
+        DWORD64 X0;
+        DWORD64 X1;
+        DWORD64 X2;
+        DWORD64 X3;
+        DWORD64 X4;
+        DWORD64 X5;
+        DWORD64 X6;
+        DWORD64 X7;
+        DWORD64 X8;
+        DWORD64 X9;
+        DWORD64 X10;
+        DWORD64 X11;
+        DWORD64 X12;
+        DWORD64 X13;
+        DWORD64 X14;
+        DWORD64 X15;
+        DWORD64 X16;
+        DWORD64 X17;
+        DWORD64 X18;
+        DWORD64 X19;
+        DWORD64 X20;
+        DWORD64 X21;
+        DWORD64 X22;
+        DWORD64 X23;
+        DWORD64 X24;
+        DWORD64 X25;
+        DWORD64 X26;
+        DWORD64 X27;
+        DWORD64 X28;
+        DWORD64 Fp;
+        DWORD64 Lr;
+      } DUMMYSTRUCTNAME;
+      DWORD64 X[31];
+    } DUMMYUNIONNAME;
+    DWORD64 Sp;
+    DWORD64 Pc;
+    ARM64_NT_NEON128 V[32];
+    DWORD Fpcr;
+    DWORD Fpsr;
+    DWORD Bcr[ARM64_MAX_BREAKPOINTS];
+    DWORD64 Bvr[ARM64_MAX_BREAKPOINTS];
+    DWORD Wcr[ARM64_MAX_WATCHPOINTS];
+    DWORD64 Wvr[ARM64_MAX_WATCHPOINTS];
+  } ARM64_NT_CONTEXT,*PARM64_NT_CONTEXT;
+#endif
+
+  typedef ARM64_NT_CONTEXT CONTEXT,*PCONTEXT;
+
+#endif /* _ARM64_ || __aarch64__ */
   typedef DWORD (*POUT_OF_PROCESS_FUNCTION_TABLE_CALLBACK)(HANDLE Process,PVOID TableAddress,PDWORD Entries,PRUNTIME_FUNCTION *Functions);
 
 #define OUT_OF_PROCESS_FUNCTION_TABLE_CALLBACK_EXPORT_NAME "OutOfProcessFunctionTableCallback"

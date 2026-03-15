@@ -29,6 +29,41 @@
 #include <sys/stat.h> /* chmod() */
 #endif
 
+#if defined(_WIN32) && defined(TCC_IS_NATIVE) && defined(TCC_TARGET_ARM64)
+static TCCSem pe_msvcrt_sem;
+
+static HMODULE pe_get_process_msvcrt_handle(void)
+{
+    static HMODULE handle;
+    HMODULE dll;
+
+    wait_sem(&pe_msvcrt_sem);
+    dll = handle;
+    if (!dll) {
+        dll = LoadLibraryA("msvcrt.dll");
+        if (dll)
+            handle = dll;
+    }
+    post_sem(&pe_msvcrt_sem);
+    return dll;
+}
+
+static HMODULE pe_load_runtime_dll(const char *name, unsigned char *process_scoped)
+{
+    HMODULE dll = NULL;
+
+    *process_scoped = 0;
+    if (0 == PATHCMP(tcc_basename(name), "msvcrt.dll")) {
+        dll = pe_get_process_msvcrt_handle();
+        if (dll)
+            *process_scoped = 1;
+    }
+    if (!dll)
+        dll = LoadLibraryA(name);
+    return dll;
+}
+#endif
+
 #ifdef TCC_TARGET_X86_64
 # define ADDR3264 ULONGLONG
 # define PE_IMAGE_REL IMAGE_REL_BASED_DIR64
@@ -995,8 +1030,14 @@ static void pe_build_imports(struct pe_info *pe)
 #ifdef TCC_IS_NATIVE
                 if (pe->type == PE_RUN) {
                     if (dllref) {
-                        if ( !dllref->handle )
+                        if (!dllref->handle) {
+#if defined(_WIN32) && defined(TCC_TARGET_ARM64)
+                            dllref->handle = pe_load_runtime_dll(dllref->name,
+                                &dllref->process_scoped);
+#else
                             dllref->handle = LoadLibraryA(dllref->name);
+#endif
+                        }
                         v = (ADDR3264)GetProcAddress(dllref->handle, ordinal?(char*)0+ordinal:name);
                     }
                     if (!v)

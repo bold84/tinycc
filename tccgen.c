@@ -4226,6 +4226,7 @@ static void struct_layout(CType *type, AttributeDef *ad)
         }
         /* some individual align was specified */
 #ifdef TCC_TARGET_PE
+        /* GNU aligned(n) on a field is a minimum, not a way to lower alignment. */
         if (a > align)
             align = a;
 #else

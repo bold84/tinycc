@@ -234,6 +234,36 @@ static void print_search_dirs(TCCState *s)
 
 static void set_environment(TCCState *s)
 {
+#ifdef _WIN32
+    static const char * const names[] = {
+        "C_INCLUDE_PATH",
+        "CPATH",
+        "LIBRARY_PATH",
+    };
+    int i;
+
+    for (i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
+        DWORD len = GetEnvironmentVariableA(names[i], NULL, 0);
+        char *path;
+
+        if (!len)
+            continue;
+        path = tcc_malloc(len);
+        if (!path)
+            continue;
+        if (!GetEnvironmentVariableA(names[i], path, len)) {
+            tcc_free(path);
+            continue;
+        }
+        if (i == 0)
+            tcc_add_sysinclude_path(s, path);
+        else if (i == 1)
+            tcc_add_include_path(s, path);
+        else
+            tcc_add_library_path(s, path);
+        tcc_free(path);
+    }
+#else
     char * path;
 
     path = getenv("C_INCLUDE_PATH");
@@ -248,6 +278,7 @@ static void set_environment(TCCState *s)
     if(path != NULL) {
         tcc_add_library_path(s, path);
     }
+#endif
 }
 
 static char *default_outputfile(TCCState *s, const char *first_file)
@@ -337,9 +368,6 @@ static int tcc_run_via_temp_exe(TCCState *s, int argc, char **argv)
         return tcc_error_noabort("could not get temp directory"), -1;
     if (!GetTempFileNameA(tmpdir, "tcc", 0, tmppath))
         return tcc_error_noabort("could not create temp file name"), -1;
-    DeleteFileA(tmppath);
-    strcpy(tcc_fileextension(tmppath), ".exe");
-    DeleteFileA(tmppath);
 
     saved_outfile = s->outfile;
     saved_output_type = s->output_type;
@@ -403,6 +431,9 @@ static int tcc_run_via_temp_exe(TCCState *s, int argc, char **argv)
 
 static int tcc_run_requires_inprocess(const TCCState *s)
 {
+    /* Temporary Windows ARM64 workaround: keep the generic in-process path
+       where CLI features rely on it, but run ordinary `tcc -run` through a
+       child process until the native runtime path is fully equivalent. */
     return (s->dflag & 16) || s->run_stdin != NULL;
 }
 #endif

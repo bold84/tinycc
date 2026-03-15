@@ -11,7 +11,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: make & test tcc (x86_64-linux)
-      run: ./configure && make && make test -k
+      run: |
+        ./configure
+        make
+        make test -k
+        make -C tests/tests2 tests2.112 tests2.128
 
   test-x86_64-osx:
     runs-on: macos-15-intel
@@ -54,6 +58,8 @@ jobs:
         cd win32
         call build-tcc.bat -t 64 -c cl
         echo ::endgroup::
+        .\tcc -B. ..\win32\test_pe_field_alignment.c -o test_pe_field_alignment.exe && .\test_pe_field_alignment.exe > test_pe_field_alignment.out
+        fc /n test_pe_field_alignment.out ..\win32\test_pe_field_alignment.ref
         .\tcc -I.. libtcc.dll -v ../tests/libtcc_test.c -o libtest.exe && .\libtest.exe
         .\tcc -I.. libtcc.dll -run ../tests/libtcc_test.c
 
@@ -100,9 +106,17 @@ jobs:
         cd win32
         call build-tcc.bat -t arm64 -c clang
         echo ::endgroup::
+        if not exist libtcc.dll exit /b 1
         .\tcc -B. -v
+        .\tcc -B. -run ..\win32\test_run_argv.c alpha "two words" beta > test_run_argv.out
+        fc /n test_run_argv.out ..\win32\test_run_argv.ref
+        type ..\win32\test_run_stdin.ref | .\tcc -B. -run ..\win32\test_run_stdin.c > test_run_stdin.out
+        fc /n test_run_stdin.out ..\win32\test_run_stdin.ref
+        powershell -NoProfile -Command "$before = @(Get-ChildItem -Path $env:TEMP -Filter 'tcc*.tmp' -Name -ErrorAction SilentlyContinue); & .\tcc -B. -run ..\win32\test_run_exit.c; if ($LASTEXITCODE -ne 27) { exit 1 }; $after = @(Get-ChildItem -Path $env:TEMP -Filter 'tcc*.tmp' -Name -ErrorAction SilentlyContinue); if (Compare-Object $before $after) { Write-Host 'Temporary -run file cleanup mismatch'; Compare-Object $before $after; exit 1 }"
         .\tcc -B. ..\win32\test_arm64.c -o test_arm64.exe && .\test_arm64.exe
         .\tcc -B. -run ..\examples\ex1.c
+        clang -O0 -I.. ..\win32\test_arm64_libtcc_context.c ..\win32\test_arm64_libtcc_context.S -o test_libtcc_context.exe
+        .\test_libtcc_context.exe
         .\tcc -B. ..\win32\test_arm64_inline_asm.c -o test_inline_asm.exe && .\test_inline_asm.exe > test_inline_asm.out
         > test_inline_asm.expect echo inline asm ok
         fc /n test_inline_asm.out test_inline_asm.expect
@@ -173,7 +187,10 @@ jobs:
           apt-get install -q -y gcc make
         run: |
             echo "::endgroup::" # flatten 'run container'
-            ./configure && make && make test -k
+            ./configure
+            make
+            make test -k
+            make -C tests/tests2 tests2.73 tests2.109 tests2.121 tests2.133
 
   test-riscv64-linux:
     runs-on: ubuntu-22.04

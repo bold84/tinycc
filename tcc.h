@@ -592,7 +592,7 @@ typedef struct Section {
 typedef struct DLLReference {
     int level;
     void *handle;
-    unsigned char found, index;
+    unsigned char found, index, process_scoped;
     char name[1];
 } DLLReference;
 

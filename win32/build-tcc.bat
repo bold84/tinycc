@@ -119,7 +119,6 @@ goto :p3
 :tarm64
 set D=%DARM64%
 set P=%PARM64%
-set TCC_C=..\tcc.c
 goto :p3
 
 :p3
