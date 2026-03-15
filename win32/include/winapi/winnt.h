@@ -21,7 +21,7 @@ extern "C" {
 #define __CRT_UNALIGNED
 #endif
 
-#if defined(__ia64__) || defined(__x86_64)
+#if defined(__ia64__) || defined(__x86_64) || defined(__aarch64__)
 #define UNALIGNED __CRT_UNALIGNED
 #ifdef _WIN64
 #define UNALIGNED64 __CRT_UNALIGNED
@@ -47,6 +47,9 @@ extern "C" {
 #endif
 #endif
 
+#if !defined(I_X86_) && !defined(_IA64_) && !defined(_AMD64_) && defined(__aarch64__) && !defined(_ARM64_)
+#define _ARM64_
+#endif
 
 #ifdef _WIN64
 #define MAX_NATURAL_ALIGNMENT sizeof(ULONGLONG)
@@ -65,7 +68,7 @@ extern "C" {
 #ifdef _WIN64
 #ifdef _AMD64_
 #define PROBE_ALIGNMENT(_s) TYPE_ALIGNMENT(DWORD)
-#elif defined(_IA64_)
+#elif defined(_IA64_) || defined(_ARM64_)
 #define PROBE_ALIGNMENT(_s) (TYPE_ALIGNMENT(_s) > TYPE_ALIGNMENT(DWORD) ? TYPE_ALIGNMENT(_s) : TYPE_ALIGNMENT(DWORD))
 #else
 #error No Target Architecture
@@ -79,7 +82,7 @@ extern "C" {
 
 #include <basetsd.h>
 
-#if defined(_X86_) || defined(__ia64__) || defined(__x86_64)
+#if defined(_X86_) || defined(__ia64__) || defined(__x86_64) || defined(__aarch64__)
 #define DECLSPEC_IMPORT __declspec(dllimport)
 #else
 #define DECLSPEC_IMPORT
@@ -321,7 +324,7 @@ typedef DWORD LCID;
 #define Int32x32To64(a,b) (LONGLONG)((LONGLONG)(LONG)(a) *(LONG)(b))
 #define UInt32x32To64(a,b) (ULONGLONG)((ULONGLONG)(DWORD)(a) *(DWORD)(b))
 #define Int64ShrlMod32(a,b) ((DWORDLONG)(a)>>(b))
-#elif defined(__ia64__) || defined(__x86_64)
+#elif defined(__ia64__) || defined(__x86_64) || defined(__aarch64__)
 #define Int32x32To64(a,b) ((LONGLONG)((LONG)(a)) *(LONGLONG)((LONG)(b)))
 #define UInt32x32To64(a,b) ((ULONGLONG)((DWORD)(a)) *(ULONGLONG)((DWORD)(b)))
 #define Int64ShrlMod32(a,b) ((ULONGLONG)(a) >> (b))
@@ -829,7 +832,7 @@ typedef DWORD LCID;
   typedef ULONG_PTR KSPIN_LOCK;
   typedef KSPIN_LOCK *PKSPIN_LOCK;
 
-#ifdef _AMD64_
+#if defined(_AMD64_) || defined(_ARM64_)
 
 #if defined(__x86_64) && !defined(RC_INVOKED)
 
@@ -1336,6 +1339,7 @@ typedef DWORD LCID;
 
 #define LEGACY_SAVE_AREA_LENGTH sizeof(XMM_SAVE_AREA32)
 
+#if defined(__x86_64) || defined(_AMD64_)
   typedef struct DECLSPEC_ALIGN(16) _CONTEXT {
     DWORD64 P1Home;
     DWORD64 P2Home;
@@ -1407,6 +1411,7 @@ typedef DWORD LCID;
     DWORD64 LastExceptionToRip;
     DWORD64 LastExceptionFromRip;
   } CONTEXT,*PCONTEXT;
+#endif /* defined(__x86_64) || defined(_AMD64_) */
 
 #define RUNTIME_FUNCTION_INDIRECT 0x1
 
@@ -1417,6 +1422,52 @@ typedef DWORD LCID;
   } RUNTIME_FUNCTION,*PRUNTIME_FUNCTION;
 
   typedef PRUNTIME_FUNCTION (*PGET_RUNTIME_FUNCTION_CALLBACK)(DWORD64 ControlPc,PVOID Context);
+
+#ifdef _ARM64_
+
+/* ARM64 Context Definition */
+#define CONTEXT_ARM64 0x00400000
+
+#ifndef CONTEXT_CONTROL
+#define CONTEXT_CONTROL (CONTEXT_ARM64 | 0x00000001L)
+#endif
+#ifndef CONTEXT_INTEGER
+#define CONTEXT_INTEGER (CONTEXT_ARM64 | 0x00000002L)
+#endif
+#ifndef CONTEXT_FLOATING_POINT
+#define CONTEXT_FLOATING_POINT (CONTEXT_ARM64 | 0x00000004L)
+#endif
+#ifndef CONTEXT_DEBUG
+#define CONTEXT_DEBUG (CONTEXT_ARM64 | 0x00000008L)
+#endif
+
+#ifndef CONTEXT_FULL
+#define CONTEXT_FULL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
+#endif
+#ifndef CONTEXT_ALL
+#define CONTEXT_ALL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT | CONTEXT_DEBUG)
+#endif
+
+#ifndef _ARM64_CONTEXT_DECLARED
+#define _ARM64_CONTEXT_DECLARED
+  typedef struct _CONTEXT {
+    DWORD64 ContextFlags;
+    DWORD64 X[29];
+    DWORD64 Fp;
+    DWORD64 Lr;
+    DWORD64 Sp;
+    DWORD64 Pc;
+    DWORD64 V[32];
+    DWORD Fpcr;
+    DWORD Fpsr;
+    DWORD Bcr[8];
+    DWORD Bvr[8];
+    DWORD Wcr[2];
+    DWORD Wvr[2];
+  } CONTEXT,*PCONTEXT;
+#endif
+
+#endif /* _ARM64_ */
   typedef DWORD (*POUT_OF_PROCESS_FUNCTION_TABLE_CALLBACK)(HANDLE Process,PVOID TableAddress,PDWORD Entries,PRUNTIME_FUNCTION *Functions);
 
 #define OUT_OF_PROCESS_FUNCTION_TABLE_CALLBACK_EXPORT_NAME "OutOfProcessFunctionTableCallback"
@@ -1961,6 +2012,25 @@ typedef DWORD LCID;
       DWORD __unusedAlignment;
       DWORD64 ExceptionInformation[EXCEPTION_MAXIMUM_PARAMETERS];
     } EXCEPTION_RECORD64,*PEXCEPTION_RECORD64;
+
+#if defined(__aarch64__) && !defined(_ARM64_CONTEXT_DECLARED)
+#define _ARM64_CONTEXT_DECLARED
+    typedef struct _CONTEXT {
+      DWORD64 ContextFlags;
+      DWORD64 X[29];
+      DWORD64 Fp;
+      DWORD64 Lr;
+      DWORD64 Sp;
+      DWORD64 Pc;
+      DWORD64 V[32];
+      DWORD Fpcr;
+      DWORD Fpsr;
+      DWORD Bcr[8];
+      DWORD Bvr[8];
+      DWORD Wcr[2];
+      DWORD Wvr[2];
+    } CONTEXT,*PCONTEXT;
+#endif
 
     typedef struct _EXCEPTION_POINTERS {
       PEXCEPTION_RECORD ExceptionRecord;
@@ -3701,6 +3771,7 @@ typedef DWORD LCID;
 #define IMAGE_FILE_MACHINE_CEF 0x0CEF
 #define IMAGE_FILE_MACHINE_EBC 0x0EBC
 #define IMAGE_FILE_MACHINE_AMD64 0x8664
+#define IMAGE_FILE_MACHINE_ARM64 0xAA64
 #define IMAGE_FILE_MACHINE_M32R 0x9041
 #define IMAGE_FILE_MACHINE_CEE 0xC0EE
 

@@ -22,18 +22,26 @@
 #define _tstart _wstart
 #define _tmain wmain
 #define _runtmain _runwmain
+#define get_tenviron _get_wenviron
 #else
 #define __tgetmainargs __getmainargs
 #define _tstart _start
 #define _tmain main
 #define _runtmain _runmain
+#define get_tenviron _get_environ
 #endif
 
 typedef struct { int newmode; } _startupinfo;
 int __cdecl __tgetmainargs(int *pargc, _TCHAR ***pargv, _TCHAR ***penv, int globb, _startupinfo*);
+int __cdecl get_tenviron(_TCHAR ***penv);
 void __cdecl __set_app_type(int apptype);
 unsigned int __cdecl _controlfp(unsigned int new_value, unsigned int mask);
 extern int _tmain(int argc, _TCHAR * argv[], _TCHAR * env[]);
+#ifdef UNICODE
+__attribute__((weak)) wchar_t **__cdecl __rt_get_wenviron(void);
+#else
+__attribute__((weak)) char **__cdecl __rt_get_environ(void);
+#endif
 
 #include "crtinit.c"
 
@@ -48,6 +56,7 @@ static LONG WINAPI catch_sig(EXCEPTION_POINTERS *ex)
 void _tstart(void)
 {
     int ret;
+    _TCHAR **env = NULL;
 
     _startupinfo start_info = {0};
     SetUnhandledExceptionFilter(catch_sig);
@@ -60,9 +69,9 @@ void _tstart(void)
     _controlfp(_PC_53, _MCW_PC);
 #endif
 
-    __tgetmainargs( &__argc, &__targv, &_tenviron, _dowildcard, &start_info);
-    run_ctors(__argc, __targv, _tenviron);
-    ret = _tmain(__argc, __targv, _tenviron);
+    __tgetmainargs(&__argc, &__targv, &env, _dowildcard, &start_info);
+    run_ctors(__argc, __targv, env);
+    ret = _tmain(__argc, __targv, env);
     run_dtors();
     exit(ret);
 }
@@ -70,15 +79,52 @@ void _tstart(void)
 // =============================================
 // for 'tcc -run ,,,'
 
-__attribute__((weak)) extern int __run_on_exit();
+__attribute__((weak)) void __run_on_exit(int ret)
+{
+    (void)ret;
+}
+
+static void run_stdio_init(void)
+{
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+}
 
 int _runtmain(int argc, /* as tcc passed in */ char **argv)
 {
     int ret;
+    _TCHAR **env = NULL;
+#ifdef UNICODE
+    if (__rt_get_wenviron) {
+        env = __rt_get_wenviron();
+#if defined __i386__ || defined __x86_64__
+        _controlfp(_PC_53, _MCW_PC);
+#endif
+        run_stdio_init();
+        run_ctors(argc, (_TCHAR **)argv, env);
+        ret = _tmain(argc, (_TCHAR **)argv, env);
+        run_dtors();
+        __run_on_exit(ret);
+        return ret;
+    }
+#else
+    if (__rt_get_environ) {
+        env = __rt_get_environ();
+#if defined __i386__ || defined __x86_64__
+        _controlfp(_PC_53, _MCW_PC);
+#endif
+        run_stdio_init();
+        run_ctors(argc, (_TCHAR **)argv, env);
+        ret = _tmain(argc, (_TCHAR **)argv, env);
+        run_dtors();
+        __run_on_exit(ret);
+        return ret;
+    }
+#endif
 #ifdef UNICODE
     _startupinfo start_info = {0};
 
-    __tgetmainargs(&__argc, &__targv, &_tenviron, _dowildcard, &start_info);
+    __tgetmainargs(&__argc, &__targv, &env, _dowildcard, &start_info);
     /* may be wrong when tcc has received wildcards (*.c) */
     if (argc < __argc) {
         __targv += __argc - argc;
@@ -87,12 +133,14 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
 #else
     __argc = argc;
     __targv = argv;
+    get_tenviron(&env);
 #endif
 #if defined __i386__ || defined __x86_64__
     _controlfp(_PC_53, _MCW_PC);
 #endif
-    run_ctors(__argc, __targv, _tenviron);
-    ret = _tmain(__argc, __targv, _tenviron);
+    run_stdio_init();
+    run_ctors(__argc, __targv, env);
+    ret = _tmain(__argc, __targv, env);
     run_dtors();
     __run_on_exit(ret);
     return ret;

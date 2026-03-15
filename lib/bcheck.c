@@ -351,7 +351,11 @@ static unsigned char print_heap;
 static unsigned char print_statistic;
 static unsigned char no_strdup;
 static unsigned char use_sem;
+#ifdef _WIN32
+static int never_fatal;
+#else
 static _Atomic int never_fatal;
+#endif
 #if HAVE_TLS_FUNC
 #if defined(_WIN32)
 static int no_checking = 0;
@@ -507,7 +511,11 @@ void __bound_checking_unlock(void)
 /* enable/disable checking. This can be used in signal handlers. */
 void __bound_never_fatal (int neverfatal)
 {
+#ifdef _WIN32
+    never_fatal += neverfatal;
+#else
     atomic_fetch_add (&never_fatal, neverfatal);
+#endif
 }
 
 /* return '(p + offset)' for pointer arithmetic (a pointer can reach
@@ -906,7 +914,11 @@ static void __bound_long_jump(jmp_buf env, int val, int sig, const char *func)
 #if !defined(_WIN32)
     sig ? siglongjmp(env, val) :
 #endif
+#if defined(_WIN32) && defined(__aarch64__)
+    __mingw_longjmp(env, val);
+#else
     longjmp (env, val);
+#endif
 }
 
 void __bound_longjmp(jmp_buf env, int val)
@@ -1159,7 +1171,7 @@ __bound_main_arg(int argc, char **argv, char **envp)
     }
 }
 
-void __attribute__((destructor)) __bound_exit(void)
+static void bound_exit_impl(void)
 {
     int i;
     static const char * const alloc_type[] = {
@@ -1269,6 +1281,11 @@ void __attribute__((destructor)) __bound_exit(void)
 #endif
         }
     }
+}
+
+void __attribute__((destructor)) __bound_exit(void)
+{
+    bound_exit_impl();
 }
 
 void __bound_exit_dll(size_t *p)
