@@ -836,14 +836,16 @@ static int arm64_hfa_aux(CType *type, int *fsize, int num)
 
 static int arm64_hfa(CType *type, unsigned *fsize)
 {
+    int n, sz;
+
     if (!type)
         return 0;
     if ((type->t & VT_BTYPE) == VT_STRUCT ||
         ((type->t & VT_ARRAY) && ((type->t & VT_BTYPE) != VT_PTR))) {
         if (!type->ref || (type->t & VT_VLA))
             return 0;
-        int sz = 0;
-        int n = arm64_hfa_aux(type, &sz, 0);
+        sz = 0;
+        n = arm64_hfa_aux(type, &sz, 0);
         if (0 < n && n <= 4) {
             if (fsize)
                 *fsize = sz;
@@ -1279,6 +1281,7 @@ ST_FUNC void gfunc_prolog(Sym *func_sym)
     CType *func_type = &func_sym->type;
     int n = 0;
     int i = 0;
+    int pcs_n;
     Sym *sym;
     CType **t;
     unsigned long *a;
@@ -1292,18 +1295,21 @@ ST_FUNC void gfunc_prolog(Sym *func_sym)
 
     for (sym = func_type->ref; sym; sym = sym->next)
         ++n;
+    pcs_n = n - 1;
     t = n || variadic ? tcc_malloc((n + variadic) * sizeof(*t)) : NULL;
     a = n || variadic ? tcc_malloc((n + variadic) * sizeof(*a)) : NULL;
 
     for (sym = func_type->ref; sym; sym = sym->next)
         t[i++] = &sym->type;
 #ifdef TCC_TARGET_PE
-    if (variadic)
+    if (variadic) {
         t[i++] = &int_type;
+        ++pcs_n;
+    }
 #endif
 
     arm64_func_va_list_stack = arm64_pcs(variadic ? var_nb_arg : 0,
-                                         n - 1 + variadic, t, a);
+                                         pcs_n, t, a);
 
 #ifdef TCC_TARGET_PE
     if (variadic)
