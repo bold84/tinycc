@@ -351,11 +351,8 @@ static unsigned char print_heap;
 static unsigned char print_statistic;
 static unsigned char no_strdup;
 static unsigned char use_sem;
-#ifdef _WIN32
-static int never_fatal;
-#else
+/* This counter is toggled from runtime/error paths and must remain atomic. */
 static _Atomic int never_fatal;
-#endif
 #if HAVE_TLS_FUNC
 #if defined(_WIN32)
 static int no_checking = 0;
@@ -511,11 +508,7 @@ void __bound_checking_unlock(void)
 /* enable/disable checking. This can be used in signal handlers. */
 void __bound_never_fatal (int neverfatal)
 {
-#ifdef _WIN32
-    never_fatal += neverfatal;
-#else
     atomic_fetch_add (&never_fatal, neverfatal);
-#endif
 }
 
 /* return '(p + offset)' for pointer arithmetic (a pointer can reach
