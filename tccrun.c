@@ -749,25 +749,6 @@ static int rt_printf(const char *fmt, ...)
     return r;
 }
 
-static const char *rt_backtrace_format(const char *fmt, char *skip, int *one)
-{
-    const char *a, *b;
-
-    skip[0] = 0;
-    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
-        size_t len = b - a;
-        if (len >= 40)
-            len = 39;
-        memcpy(skip, a, len);
-        skip[len] = 0;
-        fmt = b + 1;
-    }
-    *one = 0;
-    if (fmt[0] == '\001')
-        ++fmt, *one = 1;
-    return fmt;
-}
-
 static char *rt_elfsym(rt_context *rc, addr_t wanted_pc, addr_t *func_addr)
 {
     ElfW(Sym) *esym;
@@ -1197,10 +1178,30 @@ found:
     return (addr_t)func_addr;
 }
 /* ------------------------------------------------------------- */
-#ifndef CONFIG_TCC_BACKTRACE_ONLY
-static
-#endif
-int _tcc_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
+#if defined(_WIN32) && defined(CONFIG_TCC_BACKTRACE_ONLY)
+static const char *rt_backtrace_format(const char *fmt, char *skip, int *one)
+{
+    const char *a, *b;
+
+    skip[0] = 0;
+    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
+        size_t len = b - a;
+        if (len >= 40)
+            len = 39;
+        memcpy(skip, a, len);
+        skip[len] = 0;
+        fmt = b + 1;
+    }
+    *one = 0;
+    if (fmt[0] == '\001')
+        ++fmt, *one = 1;
+    return fmt;
+}
+
+/* Windows bt-dll.c needs a preformatted-message entry point because the
+   ARM64 wrapper path cannot forward a va_list through the old trampoline
+   mechanism. Keep this helper out of the generic runtime path. */
+static int _tcc_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
 {
     rt_context *rc, *rc2;
     addr_t pc;
@@ -1282,20 +1283,102 @@ int _tcc_backtrace_msg(rt_frame *f, const char *fmt, const char *msg)
     rt_post_sem();
     return 0;
 }
+#endif
 
 #ifndef CONFIG_TCC_BACKTRACE_ONLY
 static
 #endif
 int _tcc_backtrace(rt_frame *f, const char *fmt, va_list ap)
 {
-    char msg[200];
-    char skip[40];
-    int one;
-    const char *fmt0 = fmt;
+    rt_context *rc, *rc2;
+    addr_t pc;
+    char skip[40], msg[200];
+    int i, level, ret, n, one;
+    const char *a, *b;
+    bt_info bi;
+    addr_t (*getinfo)(rt_context*, addr_t, bt_info*);
 
-    fmt = rt_backtrace_format(fmt, skip, &one);
+    skip[0] = 0;
+    /* If fmt is like "^file.c^..." then skip calls from 'file.c' */
+    if (fmt[0] == '^' && (b = strchr(a = fmt + 1, fmt[0]))) {
+        memcpy(skip, a, b - a), skip[b - a] = 0;
+        fmt = b + 1;
+    }
+    one = 0;
+    /* hack for bcheck.c:dprintf(): one level, no newline */
+    if (fmt[0] == '\001')
+        ++fmt, one = 1;
     vsnprintf(msg, sizeof msg, fmt, ap);
-    return _tcc_backtrace_msg(f, fmt0, msg);
+
+    rt_wait_sem();
+    rc = g_rc;
+    getinfo = rt_printline, n = 6;
+    if (rc) {
+        if (rc->dwarf)
+            getinfo = rt_printline_dwarf;
+        if (rc->num_callers)
+            n = rc->num_callers;
+    }
+
+    for (i = level = 0; level < n; i++) {
+        ret = rt_get_caller_pc(&pc, f, i);
+        if (ret == -1)
+            break;
+        memset(&bi, 0, sizeof bi);
+        for (rc2 = rc; rc2; rc2 = rc2->next) {
+            if (getinfo(rc2, pc, &bi))
+                break;
+            /* we try symtab symbols (no line number info) */
+            if (!!(a = rt_elfsym(rc2, pc, &bi.func_pc))) {
+                pstrcpy(bi.func, sizeof bi.func, a);
+                break;
+            }
+        }
+        //fprintf(stderr, "%d rc %p %p\n", i, (void*)pcfunc, (void*)pc);
+        if (skip[0] && strstr(bi.file, skip))
+            continue;
+#ifndef CONFIG_TCC_BACKTRACE_ONLY
+        {
+            TCCState *s = rt_find_state(f);
+            if (s && s->bt_func) {
+                ret = s->bt_func(
+                    s->bt_data,
+                    (void*)pc,
+                    bi.file[0] ? bi.file : NULL,
+                    bi.line,
+                    bi.func[0] ? bi.func : NULL,
+                    level == 0 ? msg : NULL
+                    );
+                if (ret == 0)
+                    break;
+                goto check_break;
+            }
+        }
+#endif
+        if (bi.file[0]) {
+            rt_printf("%s:%d", bi.file, bi.line);
+        } else {
+            rt_printf("0x%08llx", (long long)pc);
+        }
+        rt_printf(": %s %s", level ? "by" : "at", bi.func[0] ? bi.func : "???");
+        if (level == 0) {
+            rt_printf(": %s", msg);
+            if (one)
+                break;
+        }
+        rt_printf("\n");
+
+#ifndef CONFIG_TCC_BACKTRACE_ONLY
+    check_break:
+#endif
+        if (rc2
+            && bi.func_pc
+            && bi.func_pc == (addr_t)rc2->top_func)
+            break;
+        ++level;
+    }
+    rt_post_sem();
+    return 0;
 }
 
 /* emit a run time error at position 'pc' */

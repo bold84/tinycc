@@ -52,11 +52,13 @@ void __bt_init(rt_context *p, int is_exe)
     }
 }
 
+#ifdef _WIN32
 __declspec(dllexport)
 int __bt_backtrace(rt_frame *f, const char *msg)
 {
     return _tcc_backtrace_msg(f, msg, msg);
 }
+#endif
 
 __declspec(dllexport)
 void __bt_exit(rt_context *p)
