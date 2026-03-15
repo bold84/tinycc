@@ -23,7 +23,7 @@
 #endif
 
 #include "tcc.h"
-#if defined(_WIN32) && defined(__aarch64__)
+#if defined(TCC_IS_NATIVE) && defined(_WIN32) && defined(__aarch64__)
 # include <process.h>
 #endif
 #if ONE_SOURCE
@@ -288,7 +288,7 @@ static unsigned getclock_ms(void)
 #endif
 }
 
-#if defined(_WIN32) && defined(__aarch64__)
+#if defined(TCC_IS_NATIVE) && defined(_WIN32) && defined(__aarch64__)
 static char *tcc_append_windows_arg(char *dst, const char *arg)
 {
     const char *p = arg;
