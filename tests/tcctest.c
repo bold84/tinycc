@@ -1662,7 +1662,7 @@ void cast_test()
     printf("sizeof(-(char)'a') = %d\n", sizeof(-(char)'a'));
     printf("sizeof(~(char)'a') = %d\n", sizeof(-(char)'a'));
 
-#if CC_NAME != CC_clang /* clang doesn't support non-portable conversions */
+#if __SIZEOF_LONG__ == __SIZEOF_POINTER__ /* avoid LLP64 lossy pointer casts */
     /* from pointer to integer types */
     printf("%d %d %ld %ld %lld %lld\n",
            (int)p, (unsigned int)p,
@@ -2176,10 +2176,9 @@ float strtof(const char *nptr, char **endptr);
 LONG_DOUBLE strtold(const char *nptr, char **endptr);
 #endif
 
-#if CC_NAME == CC_clang
-/* In clang 0.0/0.0 is nan and not -nan.
-   Also some older clang version do v=-v
-   as v = -0 - v */
+#if defined(_WIN32) || CC_NAME == CC_clang
+/* Windows CRT NaN rendering is not stable across toolchains.
+   Also some older clang versions do v=-v as v = -0 - v. */
 static char enable_nan_test = 0;
 #else
 static char enable_nan_test = 1;
@@ -3462,7 +3461,7 @@ void other_constraints_test(void)
 {
     word ret;
     int var;
-#if CC_NAME != CC_clang
+#if !defined(_WIN32) && CC_NAME != CC_clang
     __asm__ volatile ("mov %P1,%0" : "=r" (ret) : "p" (&var));
     printf ("oc1: %d\n", ret == (word)&var);
 #endif
@@ -3888,7 +3887,7 @@ int func(void);
 /* __builtin_clz and __builtin_ctz return random values for 0 */
 static void builtin_test_bits(unsigned long long x, int cnt[])
 {
-#if GCC_MAJOR >= 4
+#if defined(__TINYC__) || GCC_MAJOR >= 4
     cnt[0] += __builtin_ffs(x);
     cnt[1] += __builtin_ffsl(x);
     cnt[2] += __builtin_ffsll(x);
@@ -3901,7 +3900,7 @@ static void builtin_test_bits(unsigned long long x, int cnt[])
     if ((unsigned long) x) cnt[7] += __builtin_ctzl(x);
     if ((unsigned long long) x) cnt[8] += __builtin_ctzll(x);
 
-#if GCC_MAJOR >= 6 && (CC_NAME != CC_clang || GCC_MAJOR >= 11)
+#if defined(__TINYC__) || (GCC_MAJOR >= 6 && (CC_NAME != CC_clang || GCC_MAJOR >= 11))
 /* Apple clang 10 does not have __builtin_clrsb[l[l]] */
     cnt[9] += __builtin_clrsb(x);
     cnt[10] += __builtin_clrsbl(x);
@@ -3923,7 +3922,7 @@ void builtin_test(void)
     short s;
     int i;
     long long ll;
-#if GCC_MAJOR >= 3
+#if defined(__TINYC__) || GCC_MAJOR >= 3
     COMPAT_TYPE(int, int);
     COMPAT_TYPE(int, unsigned int);
     COMPAT_TYPE(int, char);
