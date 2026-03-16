@@ -3,7 +3,8 @@
  *  ARM64 (AArch64) assembler for TCC
  *
  *  Based on ARM64 Architecture Reference Manual
- *  Supports AArch64 assembler parsing plus basic inline asm strings
+ *  Supports AArch64 assembler parsing plus basic inline asm strings.
+ *  Extended inline asm with operands or clobbers is not yet implemented.
  */
 
 #ifdef TARGET_DEFS_ONLY
@@ -1410,6 +1411,7 @@ static int asm_has_clobbers(const uint8_t *clobber_regs)
 }
 
 /* Basic inline asm strings are assembled directly by tccasm.c.
+   asm goto labels also work through operand substitution there.
    Operand allocation and clobber handling are still unsupported here. */
 ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
                           int nb_outputs, int is_output,
