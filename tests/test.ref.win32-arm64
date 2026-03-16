@@ -445,7 +445,7 @@ linit17=4
 sinit15=12
 sinit16=1 2
 sinit17=a1 4 a2 1
-0 0 14 14 14 14 2 0 a 0
+0 0 14 14 14 14 2 0 a 0 
 cix: 2000 2001 2002 2003 2003 0 0
 cix2: 3003 4006
 sizeof cix20 4, cix21 4, sizeof cix22 4
@@ -846,7 +846,7 @@ Test C99 VLA 1 (sizeof): PASSED
 Test C99 VLA 2 (ptrs subtract): PASSED
 Test C99 VLA 3 (ptr add): PASSED
 Test C99 VLA 4 (ptr access): PASSED
-Test C99 VLA 5 (bounds checking (might be disabled)): PASSED PASSED PASSED PASSED PASSED PASSED PASSED PASSED
+Test C99 VLA 5 (bounds checking (might be disabled)): PASSED PASSED PASSED PASSED PASSED PASSED PASSED PASSED 
 Test C99 VLA 6 (pointer)
   1  2  3  4  5
   6  7  8  9 10
