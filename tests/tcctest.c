@@ -1896,7 +1896,7 @@ void init_test(void)
            sinit17[0].s, sinit17[0].len,
            sinit17[1].s, sinit17[1].len);
     for(i=0;i<10;i++)
-        printf("%s%x", i ? " " : "", sinit18[i]);
+        printf("%x ", sinit18[i]);
     printf("\n");
     /* complex init check */
     printf("cix: %d %d %d %d %d %d %d\n",
@@ -2983,25 +2983,25 @@ void c99_vla_test_1(int size1, int size2)
     if (bad_ptr = bounds_checking_is_enabled()) {
         int *t1 = &tab1[size1 * size2 - 1][3];
         int *t2 = &tab2[9][3];
-        printf("%s", bad_ptr == t1 ? "PASSED" : "FAILED");
-        printf(" %s", bad_ptr == t2 ? "PASSED" : "FAILED");
+        printf("%s ", bad_ptr == t1 ? "PASSED" : "FAILED");
+        printf("%s ", bad_ptr == t2 ? "PASSED" : "FAILED");
 
         char*c1 = 1 + sizeof(tab1) + (char*)tab1;
         char*c2 = 1 + sizeof(tab2) + (char*)tab2;
-        printf(" %s", bad_ptr == c1 ? "PASSED" : "FAILED");
-        printf(" %s", bad_ptr == c2 ? "PASSED" : "FAILED");
+        printf("%s ", bad_ptr == c1 ? "PASSED" : "FAILED");
+        printf("%s ", bad_ptr == c2 ? "PASSED" : "FAILED");
 
         int *i1 = tab1[-1];
         int *i2 = tab2[-1];
-        printf(" %s", bad_ptr == i1 ? "PASSED" : "FAILED");
-        printf(" %s", bad_ptr == i2 ? "PASSED" : "FAILED");
+        printf("%s ", bad_ptr == i1 ? "PASSED" : "FAILED");
+        printf("%s ", bad_ptr == i2 ? "PASSED" : "FAILED");
 
         int *x1 = tab1[size1 * size2 + 1];
         int *x2 = tab2[10 + 1];
-        printf(" %s", bad_ptr == x1 ? "PASSED" : "FAILED");
-        printf(" %s", bad_ptr == x2 ? "PASSED" : "FAILED");
+        printf("%s ", bad_ptr == x1 ? "PASSED" : "FAILED");
+        printf("%s ", bad_ptr == x2 ? "PASSED" : "FAILED");
     } else {
-        printf("PASSED PASSED PASSED PASSED PASSED PASSED PASSED PASSED");
+        printf("PASSED PASSED PASSED PASSED PASSED PASSED PASSED PASSED ");
     }
     printf("\n");
 }
