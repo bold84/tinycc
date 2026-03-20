@@ -583,6 +583,11 @@
 #define ARM64_MOVZ        0x52800000U
 #define ARM64_MOVN        0x12800000U
 #define ARM64_MOVK        0xF2800000U
+#define ARM64_MOVI_W      0x320003E0U
+#define ARM64_MOVI_X      0xB20003E0U
+
+/* Move wide immediate shift field */
+#define ARM64_HW(v)       (((uint32_t)(v) & 3) << 21)
 
 /* Load/store register (unsigned immediate) */
 #define ARM64_LDR_X       0xF9400000U
