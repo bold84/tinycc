@@ -299,11 +299,10 @@ static void arm64_spoff(int reg, uint64_t off)
     if (sub)
         off = -off;
     if (off < 4096)
-        o(0x910003e0 | sub << 30 | reg | off << 10);
-        // (add|sub) x(reg),sp,#(off)
+        o(ARM64_ADD_IMM | ARM64_SF(1) | ARM64_RN(31) | ARM64_RD(reg) | ARM64_IMM12(off));
     else {
-        arm64_movimm(30, off); // use x30 for offset
-        o(0x8b3e63e0 | sub << 30 | reg); // (add|sub) x(reg),sp,x30
+        arm64_movimm(30, off);
+        o(ARM64_ADD_REG | ARM64_SF(1) | ARM64_RM(30) | ARM64_RN(31) | ARM64_RD(reg) | (sub << 31));
     }
 }
 
