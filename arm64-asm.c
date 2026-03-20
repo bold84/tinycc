@@ -258,9 +258,15 @@ static void parse_operand(TCCState *s1, Operand *op)
     /* Immediate or address expression */
     if (tok == '#' || tok == ':' || tok == '@' || tok == '$') {
         next();
+        asm_expr(s1, &op->e);
+        op->type = OP_IM;
+    } else if (tok >= TOK_IDENT) {
+        tcc_error("invalid operand '%s'", get_tok_str(tok, &tokc));
+        op->type = OP_IM;
+    } else {
+        asm_expr(s1, &op->e);
+        op->type = OP_IM;
     }
-    asm_expr(s1, &op->e);
-    op->type = OP_IM;
 }
 
 /* Parse address operand in brackets [xn, ...] */
