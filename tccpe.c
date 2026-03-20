@@ -1940,7 +1940,7 @@ PUB_FUNC int tcc_get_dllexports(const char *filename, char **pp)
 
 /* ------------------------------------------------------------- */
 #ifdef TCC_TARGET_X86_64
-static unsigned pe_add_uwwind_info(TCCState *s1)
+static unsigned pe_add_unwind_info(TCCState *s1)
 {
     if (NULL == s1->uw_pdata) {
         s1->uw_pdata = find_section(s1, ".pdata");
@@ -1985,7 +1985,7 @@ ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
       DWORD UnwindData;
     } *p;
 
-    d = pe_add_uwwind_info(s1);
+    d = pe_add_unwind_info(s1);
     pd = s1->uw_pdata;
     o = pd->data_offset;
     p = section_ptr_add(pd, sizeof *p);
@@ -2007,7 +2007,7 @@ ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
    alloc_m:     11000iii xxxxxxxx - sub sp,sp,#X*16 (up to 32KB)
    end:         11100100  - end of unwind codes
 */
-static Section *pe_add_uwwind_info(TCCState *s1)
+static Section *pe_add_unwind_info(TCCState *s1)
 {
     Section *s;
 
@@ -2042,7 +2042,7 @@ ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
         DWORD UnwindData;
     } *p;
 
-    xd = pe_add_uwwind_info(s1);
+    xd = pe_add_unwind_info(s1);
     pd = s1->uw_pdata;
 
     stack = (stack + 15) & ~15;
