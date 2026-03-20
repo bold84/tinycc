@@ -658,7 +658,7 @@ static int is_valid_logical_imm(int64_t val, int bits)
         uint64_t pattern = uval & 0x3F;
         if (pattern == 0 || pattern == 0x3F) {
             uint64_t shifted = uval >> (i * 2);
-            if ((shifted & ((uint64_t)1 << (bits - i * 2)) - 1) == 0)
+            if ((shifted & (((uint64_t)1 << (bits - i * 2)) - 1)) == 0)
                 return 1;
         }
     }
