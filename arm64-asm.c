@@ -310,39 +310,34 @@ static void parse_addr_operand(TCCState *s1, Operand *op)
 }
 
 /* Generate MOVZ instruction */
-static void gen_movz(int rd, uint16_t imm, int shift, int is_64bit)
+/* Generate MOVZ/MOVN/MOVK with base opcode */
+static void gen_mov_with_base(int rd, uint16_t imm, int shift, 
+                              int is_64bit, uint32_t base_opcode)
 {
-    uint32_t instr = 0x52800000;
+    uint32_t instr = base_opcode;
     if (is_64bit) instr |= (1 << 31);
     /* shift is halfword index (0-3), encode as LSL #0/16/32/48 */
     instr |= ((shift & 3) << 21) & 0x00600000;
     instr |= (imm << 5) & 0x00FFFFE0;
     instr |= rd & 0x1F;
     emit_instr32(instr);
+}
+
+static void gen_movz(int rd, uint16_t imm, int shift, int is_64bit)
+{
+    gen_mov_with_base(rd, imm, shift, is_64bit, 0x52800000);
 }
 
 /* Generate MOVN instruction */
 static void gen_movn(int rd, uint16_t imm, int shift, int is_64bit)
 {
-    uint32_t instr = 0x12800000;
-    if (is_64bit) instr |= (1 << 31);
-    /* shift is halfword index (0-3), encode as LSL #0/16/32/48 */
-    instr |= ((shift & 3) << 21) & 0x00600000;
-    instr |= (imm << 5) & 0x00FFFFE0;
-    instr |= rd & 0x1F;
-    emit_instr32(instr);
+    gen_mov_with_base(rd, imm, shift, is_64bit, 0x12800000);
 }
 
 /* Generate MOVK instruction */
 static void gen_movk(int rd, uint16_t imm, int shift, int is_64bit)
 {
-    uint32_t instr = 0xF2800000;
-    if (is_64bit) instr |= (1 << 31);
-    /* shift is halfword index (0-3), encode as LSL #0/16/32/48 */
-    instr |= ((shift & 3) << 21) & 0x00600000;
-    instr |= (imm << 5) & 0x00FFFFE0;
-    instr |= rd & 0x1F;
-    emit_instr32(instr);
+    gen_mov_with_base(rd, imm, shift, is_64bit, 0xF2800000);
 }
 
 /* Generate ADD (immediate) */
@@ -445,19 +440,23 @@ static void gen_ldst_pair(uint32_t base_opcode, int rt, int rt2, int rn,
 }
 
 /* Generate B (branch) */
-static void gen_b(int32_t offset)
+/* Generate B/BL with base opcode */
+static void gen_b_or_bl(int32_t offset, uint32_t base_opcode)
 {
-    uint32_t instr = 0x14000000;
+    uint32_t instr = base_opcode;
     instr |= ((offset >> 2) & 0x03FFFFFF);
     emit_instr32(instr);
+}
+
+static void gen_b(int32_t offset)
+{
+    gen_b_or_bl(offset, 0x14000000);
 }
 
 /* Generate BL (branch with link) */
 static void gen_bl(int32_t offset)
 {
-    uint32_t instr = 0x94000000;
-    instr |= ((offset >> 2) & 0x03FFFFFF);
-    emit_instr32(instr);
+    gen_b_or_bl(offset, 0x94000000);
 }
 
 /* Generate BR (branch to register) */
@@ -494,23 +493,25 @@ static void gen_b_cond(int cond, int32_t offset)
 }
 
 /* Generate CBZ */
-static void gen_cbz(int rt, int32_t offset, int is_64bit)
+/* Generate CBZ/CBNZ with base opcode */
+static void gen_cbz_or_cbnz(int rt, int32_t offset, int is_64bit, uint32_t base_opcode)
 {
-    uint32_t instr = 0x34000000;
+    uint32_t instr = base_opcode;
     if (is_64bit) instr |= (1 << 31);
     instr |= ((offset >> 2) & 0x7FFFF) << 5;
     instr |= rt & 0x1F;
     emit_instr32(instr);
 }
 
+static void gen_cbz(int rt, int32_t offset, int is_64bit)
+{
+    gen_cbz_or_cbnz(rt, offset, is_64bit, 0x34000000);
+}
+
 /* Generate CBNZ */
 static void gen_cbnz(int rt, int32_t offset, int is_64bit)
 {
-    uint32_t instr = 0x35000000;
-    if (is_64bit) instr |= (1 << 31);
-    instr |= ((offset >> 2) & 0x7FFFF) << 5;
-    instr |= rt & 0x1F;
-    emit_instr32(instr);
+    gen_cbz_or_cbnz(rt, offset, is_64bit, 0x35000000);
 }
 
 /* Generate MOV (register) - ORR with zero register */
