@@ -692,6 +692,16 @@ static void asm_shift(TCCState *s1, int token)
     parse_operand(s1, &op1);
     if (tok == ',') next();
     parse_operand(s1, &op2);
+
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (!(op2.type & OP_REG)) {
+        tcc_error("expected register in second operand");
+        return;
+    }
+
     rd = op1.reg;
     rn = op2.reg;
 
@@ -872,6 +882,16 @@ static void asm_data_proc(TCCState *s1, int token)
     parse_operand(s1, &op1);
     if (tok == ',') next();
     parse_operand(s1, &op2);
+
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (!(op2.type & OP_REG)) {
+        tcc_error("expected register in second operand");
+        return;
+    }
+
     rd = op1.reg;
     rn = op2.reg;
 
@@ -889,6 +909,10 @@ static void asm_data_proc(TCCState *s1, int token)
             else
                 tcc_error("immediate operand not valid for this instruction");
         } else {
+            if (!(op3.type & OP_REG)) {
+                tcc_error("expected register in third operand");
+                return;
+            }
             rm = op3.reg;
             is_64bit = (op1.reg_type & REG_X);
             if (is_64bit != !!(op2.reg_type & REG_X) || is_64bit != !!(op3.reg_type & REG_X))
@@ -915,6 +939,15 @@ static void asm_ldst(TCCState *s1, int token)
     parse_operand(s1, &op1);
     if (tok == ',') next();
     parse_operand(s1, &op2);
+
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (op2.type != OP_ADDR) {
+        tcc_error("expected address operand in second operand");
+        return;
+    }
 
     rt = op1.reg;
     rn = op2.reg;
@@ -991,6 +1024,14 @@ static void asm_ldst_pair(TCCState *s1, int token)
         next();
     parse_operand(s1, &op3);
 
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (!(op2.type & OP_REG)) {
+        tcc_error("expected register in second operand");
+        return;
+    }
     if (!(op3.type & OP_ADDR))
         tcc_error("pair load/store requires an address operand");
 
