@@ -190,35 +190,35 @@ static uint32_t arm64_movi(int r, uint64_t x)
     uint64_t m = 0xffff;
     int e;
     if (!(x & ~m))
-        return 0x52800000 | r | x << 5; // movz w(r),#(x)
+        return ARM64_MOVZ | r | x << 5; // movz w(r),#(x)
     if (!(x & ~(m << 16)))
-        return 0x52a00000 | r | x >> 11; // movz w(r),#(x >> 16),lsl #16
+        return (ARM64_MOVZ | ARM64_HW(1) | r | x >> 11); // movz w(r),#(x >> 16),lsl #16
     if (!(x & ~(m << 32)))
-        return 0xd2c00000 | r | x >> 27; // movz x(r),#(x >> 32),lsl #32
+        return (ARM64_MOVZ64 | ARM64_HW(2) | r | x >> 27); // movz x(r),#(x >> 32),lsl #32
     if (!(x & ~(m << 48)))
-        return 0xd2e00000 | r | x >> 43; // movz x(r),#(x >> 48),lsl #48
+        return (ARM64_MOVZ64 | ARM64_HW(3) | r | x >> 43); // movz x(r),#(x >> 48),lsl #48
     if ((x & ~m) == m << 16)
-        return (0x12800000 | r |
+        return (ARM64_MOVN | r |
                 (~x << 5 & 0x1fffe0)); // movn w(r),#(~x)
     if ((x & ~(m << 16)) == m)
-        return (0x12a00000 | r |
+        return (ARM64_MOVN | ARM64_HW(1) | r |
                 (~x >> 11 & 0x1fffe0)); // movn w(r),#(~x >> 16),lsl #16
     if (!~(x | m))
-        return (0x92800000 | r |
+        return (ARM64_MOVN64 | r |
                 (~x << 5 & 0x1fffe0)); // movn x(r),#(~x)
     if (!~(x | m << 16))
-        return (0x92a00000 | r |
+        return (ARM64_MOVN64 | ARM64_HW(1) | r |
                 (~x >> 11 & 0x1fffe0)); // movn x(r),#(~x >> 16),lsl #16
     if (!~(x | m << 32))
-        return (0x92c00000 | r |
+        return (ARM64_MOVN64 | ARM64_HW(2) | r |
                 (~x >> 27 & 0x1fffe0)); // movn x(r),#(~x >> 32),lsl #32
     if (!~(x | m << 48))
-        return (0x92e00000 | r |
+        return (ARM64_MOVN64 | ARM64_HW(3) | r |
                 (~x >> 43 & 0x1fffe0)); // movn x(r),#(~x >> 32),lsl #32
     if (!(x >> 32) && (e = arm64_encode_bimm64(x | x << 32)) >= 0)
-        return 0x320003e0 | r | (uint32_t)e << 10; // movi w(r),#(x)
+        return (ARM64_ORR_IMM | r | (uint32_t)e << 10); // movi w(r),#(x)
     if ((e = arm64_encode_bimm64(x)) >= 0)
-        return 0xb20003e0 | r | (uint32_t)e << 10; // movi x(r),#(x)
+        return (ARM64_ORR_IMM | ARM64_SF(1) | r | (uint32_t)e << 10); // movi x(r),#(x)
     return 0;
 }
 
@@ -230,7 +230,7 @@ static void arm64_movimm(int r, uint64_t x)
     else {
         // MOVZ/MOVN and 1-3 MOVKs
         int z = 0, m = 0;
-        uint32_t mov1 = 0xd2800000; // movz
+        uint32_t mov1 = ARM64_MOVZ64; // movz
         uint64_t x1 = x;
         for (i = 0; i < 64; i += 16) {
             z += !(x >> i & 0xffff);
@@ -238,7 +238,7 @@ static void arm64_movimm(int r, uint64_t x)
         }
         if (m > z) {
             x1 = ~x;
-            mov1 = 0x92800000; // movn
+            mov1 = ARM64_MOVN64; // movn
         }
         for (i = 0; i < 64; i += 16)
             if (x1 >> i & 0xffff) {
@@ -248,7 +248,7 @@ static void arm64_movimm(int r, uint64_t x)
             }
         for (i += 16; i < 64; i += 16)
             if (x1 >> i & 0xffff)
-                o(0xf2800000 | r | (x >> i & 0xffff) << 5 | i << 17);
+                o(ARM64_MOVK | ARM64_SF(1) | r | (x >> i & 0xffff) << 5 | i << 17);
                 // movk x(r),#(*),lsl #(i)
     }
 }
