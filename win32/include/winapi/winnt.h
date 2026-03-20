@@ -2079,7 +2079,7 @@ typedef DWORD LCID;
       DWORD64 Lr;
       DWORD64 Sp;
       DWORD64 Pc;
-      DWORD64 V[32];
+      ARM64_NT_NEON128 V[32];
       DWORD Fpcr;
       DWORD Fpsr;
       DWORD Bcr[8];
