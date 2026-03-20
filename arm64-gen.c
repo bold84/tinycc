@@ -1051,12 +1051,12 @@ static void arm64_sub_sp(uint64_t diff)
 #endif
     if (!(diff >> 24)) {
         if (diff & 0xffful)
-            o(0xd10003ff | (diff & 0xffful) << 10); // sub sp,sp,#low12
+            o(ARM64_SUB_IMM | ARM64_SF(1) | ARM64_RN(31) | ARM64_RD(31) | ARM64_IMM12(diff & 0xfff));
         if (diff >> 12)
-            o(0xd14003ff | (diff >> 12) << 10); // sub sp,sp,#high12,lsl #12
+            o(ARM64_SUB_IMM | ARM64_SF(1) | ARM64_SH(1) | ARM64_RN(31) | ARM64_RD(31) | ARM64_IMM12((diff >> 12) & 0xfff));
     } else {
         arm64_movimm(16, diff);
-        o(0xcb3063ff); // sub sp,sp,x16
+        o(0xCB3063FFU); // sub sp,sp,x16
     }
 }
 

@@ -556,3 +556,150 @@
  DEF_ASM(st3)
  DEF_ASM(ld4)
  DEF_ASM(st4)
+
+/* ------------------------------------------------------------------ */
+/* ARM64 instruction opcode constants and encoding helpers           */
+/* ------------------------------------------------------------------ */
+
+/* Data processing - immediate */
+#define ARM64_ADD_IMM     0x11000000U
+#define ARM64_ADDS_IMM    0x2B000000U
+#define ARM64_SUB_IMM     0x51000000U
+#define ARM64_SUBS_IMM    0x6B000000U
+
+/* Data processing - register */
+#define ARM64_ADD_REG     0x0B000000U
+#define ARM64_ADDS_REG    0x2B000000U
+#define ARM64_SUB_REG     0x4B000000U
+#define ARM64_SUBS_REG    0x6B000000U
+#define ARM64_AND_REG     0x0A000000U
+#define ARM64_ANDS_REG    0x2A000000U
+#define ARM64_ORR_REG     0x2A000000U
+#define ARM64_EOR_REG     0x4A000000U
+#define ARM64_MUL_REG     0x1B007C00U
+#define ARM64_MULS_REG    0x3B007C00U
+
+/* Move wide immediate */
+#define ARM64_MOVZ        0x52800000U
+#define ARM64_MOVN        0x12800000U
+#define ARM64_MOVK        0xF2800000U
+
+/* Load/store register (unsigned immediate) */
+#define ARM64_LDR_X       0xF9400000U
+#define ARM64_LDR_W       0xB9400000U
+#define ARM64_LDR_B       0x39400000U
+#define ARM64_LDR_H       0x79400000U
+#define ARM64_LDR_D       0xFD400000U
+#define ARM64_LDR_S       0xBD400000U
+#define ARM64_STR_X       0xF9000000U
+#define ARM64_STR_W       0xB9000000U
+#define ARM64_STR_B       0x39000000U
+#define ARM64_STR_H       0x79000000U
+#define ARM64_STR_D       0xFD000000U
+#define ARM64_STR_S       0xBD000000U
+
+/* Load/store register (unscaled immediate) */
+#define ARM64_LDUR_X      0xF8400000U
+#define ARM64_LDUR_W      0xB8400000U
+#define ARM64_STUR_X      0xF8000000U
+#define ARM64_STUR_W      0xB8000000U
+
+/* Load/store pair */
+#define ARM64_LDP_X       0xA9400000U
+#define ARM64_LDP_X_PRE   0xA9C00000U
+#define ARM64_LDP_X_POST  0xA8C00000U
+#define ARM64_STP_X       0xA9000000U
+#define ARM64_STP_X_PRE   0xA9800000U
+#define ARM64_STP_X_POST  0xA8800000U
+#define ARM64_LDP_D       0x6D400000U
+#define ARM64_LDP_D_PRE   0x6DC00000U
+#define ARM64_LDP_D_POST  0x6CC00000U
+#define ARM64_STP_D       0x6D000000U
+#define ARM64_STP_D_PRE   0x6D800000U
+#define ARM64_STP_D_POST  0x6C800000U
+
+/* Branch instructions */
+#define ARM64_B           0x14000000U
+#define ARM64_BL          0x94000000U
+#define ARM64_BR          0xD61F0000U
+#define ARM64_BLR         0xD63F0000U
+#define ARM64_RET         0xD65F03C0U
+
+/* Conditional branch */
+#define ARM64_B_COND      0x54000000U
+
+/* Compare and branch */
+#define ARM64_CBZ         0x34000000U
+#define ARM64_CBNZ        0x35000000U
+
+/* System instructions */
+#define ARM64_NOP         0xD503201FU
+#define ARM64_ISB         0xD50330DFU
+#define ARM64_DSB         0xD503309FU
+#define ARM64_DMB         0xD50330BFU
+#define ARM64_MRS         0xD5380000U
+#define ARM64_MSR         0xD5180000U
+
+/* Shifts (register) */
+#define ARM64_LSL_REG     0x1AC02000U
+#define ARM64_LSR_REG     0x1AC02400U
+#define ARM64_ASR_REG     0x1AC02800U
+#define ARM64_ROR_REG     0x1AC02C00U
+
+/* Shifts (immediate - UBFM/SBFM) */
+#define ARM64_LSL_IMM     0xD3400000U
+#define ARM64_LSR_IMM     0xD3400000U
+#define ARM64_ASR_IMM     0x93400000U
+
+/* MOV (register) - ORR with zero register */
+#define ARM64_MOV_REG     0x2A0003E0U
+
+/* Address generation */
+#define ARM64_ADRP        0x90000000U
+#define ARM64_ADR         0x10000000U
+
+/* Logical immediate */
+#define ARM64_ORR_IMM     0x320003E0U
+#define ARM64_AND_IMM     0x12000000U
+
+/* ------------------------------------------------------------------ */
+/* ARM64 instruction encoding helper macros                           */
+/* ------------------------------------------------------------------ */
+
+/* Register field encodings */
+#define ARM64_RD(r)     ((uint32_t)(r) & 0x1FU)
+#define ARM64_RN(r)     (((uint32_t)(r) & 0x1FU) << 5)
+#define ARM64_RM(r)     (((uint32_t)(r) & 0x1FU) << 16)
+#define ARM64_RT(r)     ((uint32_t)(r) & 0x1FU)
+#define ARM64_RT2(r)    (((uint32_t)(r) & 0x1FU) << 10)
+
+/* Immediate field encodings */
+#define ARM64_IMM12(v)  (((uint32_t)(v) & 0xFFFU) << 10)
+#define ARM64_IMM7(v)   (((uint32_t)(v) & 0x7FU) << 15)
+#define ARM64_IMM14(v)  (((uint32_t)(v) & 0x3FFFU) << 5)
+#define ARM64_IMM16(v)  (((uint32_t)(v) & 0xFFFFU) << 5)
+#define ARM64_IMM_HW(v, hw) (((uint32_t)(v) & 0xFFFFU) << 5 | (((hw) & 3) << 21))
+
+/* Shift and size encodings */
+#define ARM64_SIZE(s)   (((uint32_t)(s) & 3) << 30)
+#define ARM64_SF(s)     (((uint32_t)(s) & 1) << 31)
+#define ARM64_S(v)      (((uint32_t)(v) & 1) << 29)
+#define ARM64_SH(v)     (((uint32_t)(v) & 1) << 22)
+
+/* Condition code encoding */
+#define ARM64_COND(c)   ((uint32_t)(c) & 0xFU)
+
+/* Branch offset encoding */
+#define ARM64_OFFSET26(v) (((uint32_t)(v) >> 2) & 0x3FFFFFFU)
+#define ARM64_OFFSET19(v) (((uint32_t)(v) >> 2) & 0x7FFFFU)
+#define ARM64_OFFSET14(v) (((uint32_t)(v) >> 2) & 0x3FFFU)
+
+/* Special register field (for MRS/MSR) */
+#define ARM64_SYSREG(op0, op1, crn, crm, op2) \
+    ((((op0) & 3) << 19) | (((op1) & 7) << 16) | \
+     (((crn) & 15) << 12) | (((crm) & 15) << 8) | (((op2) & 7) << 5))
+
+/* Barrier option encoding */
+#define ARM64_ISB_OPTION(opt) (((uint32_t)(opt) & 0xFU) << 8)
+#define ARM64_DSB_OPTION(opt) (((uint32_t)(opt) & 0xFU) << 8)
+#define ARM64_DMB_OPTION(opt) (((uint32_t)(opt) & 0xFU) << 8)

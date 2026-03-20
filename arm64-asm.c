@@ -365,78 +365,77 @@ static void gen_mov_with_base(int rd, uint16_t imm, int shift,
                               int is_64bit, uint32_t base_opcode)
 {
     uint32_t instr = base_opcode;
-    if (is_64bit) instr |= (1 << 31);
+    if (is_64bit) instr |= ARM64_SF(1);
     /* shift is halfword index (0-3), encode as LSL #0/16/32/48 */
-    instr |= ((shift & 3) << 21) & 0x00600000;
-    instr |= (imm << 5) & 0x00FFFFE0;
-    instr |= rd & 0x1F;
+    instr |= ARM64_IMM_HW(imm, shift);
+    instr |= ARM64_RD(rd);
     emit_instr32(instr);
 }
 
 static void gen_movz(int rd, uint16_t imm, int shift, int is_64bit)
 {
-    gen_mov_with_base(rd, imm, shift, is_64bit, 0x52800000);
+    gen_mov_with_base(rd, imm, shift, is_64bit, ARM64_MOVZ);
 }
 
 /* Generate MOVN instruction */
 static void gen_movn(int rd, uint16_t imm, int shift, int is_64bit)
 {
-    gen_mov_with_base(rd, imm, shift, is_64bit, 0x12800000);
+    gen_mov_with_base(rd, imm, shift, is_64bit, ARM64_MOVN);
 }
 
 /* Generate MOVK instruction */
 static void gen_movk(int rd, uint16_t imm, int shift, int is_64bit)
 {
-    gen_mov_with_base(rd, imm, shift, is_64bit, 0xF2800000);
+    gen_mov_with_base(rd, imm, shift, is_64bit, ARM64_MOVK);
 }
 
 /* Generate ADD (immediate) */
 static void gen_add_imm(int rd, int rn, uint32_t imm, int is_64bit, int setflags)
 {
-    uint32_t instr = 0x11000000;
+    uint32_t instr = ARM64_ADD_IMM;
     uint32_t imm12;
 
-    if (is_64bit) instr |= (1 << 31);
-    if (setflags) instr |= (1 << 29);
+    if (is_64bit) instr |= ARM64_SF(1);
+    if (setflags) instr |= ARM64_S(1);
 
     if (imm <= 0xFFF) {
         imm12 = imm;
     } else if (!(imm & 0xFFF) && (imm >> 12) <= 0xFFF) {
-        instr |= 1 << 22;
+        instr |= ARM64_SH(1);
         imm12 = imm >> 12;
     } else {
         tcc_error("add immediate out of range");
         return;
     }
 
-    instr |= imm12 << 10;
-    instr |= (rn & 0x1F) << 5;
-    instr |= rd & 0x1F;
+    instr |= ARM64_IMM12(imm12);
+    instr |= ARM64_RN(rn);
+    instr |= ARM64_RD(rd);
     emit_instr32(instr);
 }
 
 /* Generate SUB (immediate) */
 static void gen_sub_imm(int rd, int rn, uint32_t imm, int is_64bit, int setflags)
 {
-    uint32_t instr = 0x51000000;
+    uint32_t instr = ARM64_SUB_IMM;
     uint32_t imm12;
 
-    if (is_64bit) instr |= (1 << 31);
-    if (setflags) instr |= (1 << 29);
+    if (is_64bit) instr |= ARM64_SF(1);
+    if (setflags) instr |= ARM64_S(1);
 
     if (imm <= 0xFFF) {
         imm12 = imm;
     } else if (!(imm & 0xFFF) && (imm >> 12) <= 0xFFF) {
-        instr |= 1 << 22;
+        instr |= ARM64_SH(1);
         imm12 = imm >> 12;
     } else {
         tcc_error("sub immediate out of range");
         return;
     }
 
-    instr |= imm12 << 10;
-    instr |= (rn & 0x1F) << 5;
-    instr |= rd & 0x1F;
+    instr |= ARM64_IMM12(imm12);
+    instr |= ARM64_RN(rn);
+    instr |= ARM64_RD(rd);
     emit_instr32(instr);
 }
 
@@ -444,10 +443,10 @@ static void gen_sub_imm(int rd, int rn, uint32_t imm, int is_64bit, int setflags
 static void gen_dp_reg(uint32_t opcode, int rd, int rn, int rm, int is_64bit)
 {
     uint32_t instr = opcode;
-    if (is_64bit) instr |= (1 << 31);
-    instr |= (rm & 0x1F) << 16;
-    instr |= (rn & 0x1F) << 5;
-    instr |= rd & 0x1F;
+    if (is_64bit) instr |= ARM64_SF(1);
+    instr |= ARM64_RM(rm);
+    instr |= ARM64_RN(rn);
+    instr |= ARM64_RD(rd);
     emit_instr32(instr);
 }
 
@@ -463,9 +462,9 @@ static void gen_ldst_imm(uint32_t base_opcode, int rt, int rn,
     imm12 = offset >> size_log2;
     if (imm12 > 0xFFF)
         tcc_error("load/store offset out of range");
-    instr |= (imm12 & 0xFFF) << 10;
-    instr |= (rn & 0x1F) << 5;
-    instr |= rt & 0x1F;
+    instr |= ARM64_IMM12(imm12);
+    instr |= ARM64_RN(rn);
+    instr |= ARM64_RT(rt);
     emit_instr32(instr);
 }
 
@@ -482,10 +481,10 @@ static void gen_ldst_pair(uint32_t base_opcode, int rt, int rt2, int rn,
     if (imm7 < -64 || imm7 > 63)
         tcc_error("pair load/store offset out of range");
 
-    instr |= (imm7 & 0x7F) << 15;
-    instr |= (rt2 & 0x1F) << 10;
-    instr |= (rn & 0x1F) << 5;
-    instr |= rt & 0x1F;
+    instr |= ARM64_IMM7(imm7);
+    instr |= ARM64_RT2(rt2);
+    instr |= ARM64_RN(rn);
+    instr |= ARM64_RT(rt);
     emit_instr32(instr);
 }
 
@@ -494,51 +493,51 @@ static void gen_ldst_pair(uint32_t base_opcode, int rt, int rt2, int rn,
 static void gen_b_or_bl(int32_t offset, uint32_t base_opcode)
 {
     uint32_t instr = base_opcode;
-    instr |= ((offset >> 2) & 0x03FFFFFF);
+    instr |= ARM64_OFFSET26(offset);
     emit_instr32(instr);
 }
 
 static void gen_b(int32_t offset)
 {
-    gen_b_or_bl(offset, 0x14000000);
+    gen_b_or_bl(offset, ARM64_B);
 }
 
 /* Generate BL (branch with link) */
 static void gen_bl(int32_t offset)
 {
-    gen_b_or_bl(offset, 0x94000000);
+    gen_b_or_bl(offset, ARM64_BL);
 }
 
 /* Generate BR (branch to register) */
 static void gen_br(int rn)
 {
-    uint32_t instr = 0xD61F0000;
-    instr |= (rn & 0x1F) << 5;
+    uint32_t instr = ARM64_BR;
+    instr |= ARM64_RN(rn);
     emit_instr32(instr);
 }
 
 /* Generate BLR (branch with link to register) */
 static void gen_blr(int rn)
 {
-    uint32_t instr = 0xD63F0000;
-    instr |= (rn & 0x1F) << 5;
+    uint32_t instr = ARM64_BLR;
+    instr |= ARM64_RN(rn);
     emit_instr32(instr);
 }
 
 /* Generate RET */
 static void gen_ret(int rn)
 {
-    uint32_t instr = 0xD65F03C0;
-    instr |= (rn & 0x1F) << 5;
+    uint32_t instr = ARM64_RET;
+    instr |= ARM64_RN(rn);
     emit_instr32(instr);
 }
 
 /* Generate conditional branch */
 static void gen_b_cond(int cond, int32_t offset)
 {
-    uint32_t instr = 0x54000000;
-    instr |= ((offset >> 2) & 0x7FFFF) << 5;
-    instr |= cond & 0xF;
+    uint32_t instr = ARM64_B_COND;
+    instr |= ARM64_OFFSET19(offset);
+    instr |= ARM64_COND(cond);
     emit_instr32(instr);
 }
 
@@ -547,30 +546,30 @@ static void gen_b_cond(int cond, int32_t offset)
 static void gen_cbz_or_cbnz(int rt, int32_t offset, int is_64bit, uint32_t base_opcode)
 {
     uint32_t instr = base_opcode;
-    if (is_64bit) instr |= (1 << 31);
-    instr |= ((offset >> 2) & 0x7FFFF) << 5;
-    instr |= rt & 0x1F;
+    if (is_64bit) instr |= ARM64_SF(1);
+    instr |= ARM64_OFFSET19(offset);
+    instr |= ARM64_RT(rt);
     emit_instr32(instr);
 }
 
 static void gen_cbz(int rt, int32_t offset, int is_64bit)
 {
-    gen_cbz_or_cbnz(rt, offset, is_64bit, 0x34000000);
+    gen_cbz_or_cbnz(rt, offset, is_64bit, ARM64_CBZ);
 }
 
 /* Generate CBNZ */
 static void gen_cbnz(int rt, int32_t offset, int is_64bit)
 {
-    gen_cbz_or_cbnz(rt, offset, is_64bit, 0x35000000);
+    gen_cbz_or_cbnz(rt, offset, is_64bit, ARM64_CBNZ);
 }
 
 /* Generate MOV (register) - ORR with zero register */
 static void gen_mov_reg(int rd, int rm, int is_64bit)
 {
-    uint32_t instr = 0x2A0003E0;
-    if (is_64bit) instr |= (1 << 31);
-    instr |= (rm & 0x1F) << 16;
-    instr |= rd & 0x1F;
+    uint32_t instr = ARM64_MOV_REG;
+    if (is_64bit) instr |= ARM64_SF(1);
+    instr |= ARM64_RM(rm);
+    instr |= ARM64_RD(rd);
     emit_instr32(instr);
 }
 
@@ -707,17 +706,17 @@ static void gen_mrs(int rt, int sysreg)
     uint32_t instr;
 
     switch (sysreg) {
-        case 0:
-            instr = 0xD53B4400;
+        case 0: /* FPCR */
+            instr = 0xD53B4400U;
             break;
-        case 1:
-            instr = 0xD53B4420;
+        case 1: /* FPSR */
+            instr = 0xD53B4420U;
             break;
         default:
             tcc_error("unsupported system register");
             return;
     }
-    emit_instr32(instr | (rt & 0x1F));
+    emit_instr32(instr | ARM64_RD(rt));
 }
 
 static void gen_msr(int rt, int sysreg)
@@ -725,23 +724,23 @@ static void gen_msr(int rt, int sysreg)
     uint32_t instr;
 
     switch (sysreg) {
-        case 0:
-            instr = 0xD51B4400;
+        case 0: /* FPCR */
+            instr = 0xD51B4400U;
             break;
-        case 1:
-            instr = 0xD51B4420;
+        case 1: /* FPSR */
+            instr = 0xD51B4420U;
             break;
         default:
             tcc_error("unsupported system register");
             return;
     }
-    emit_instr32(instr | (rt & 0x1F));
+    emit_instr32(instr | ARM64_RD(rt));
 }
 
 /* Generate NOP */
 static void gen_nop(void)
 {
-    emit_instr32(0xD503201F);
+    emit_instr32(ARM64_NOP);
 }
 
 /* Generate shift operations (LSL, LSR, ASR, ROR) */
@@ -758,7 +757,7 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
                     tcc_error("shift immediate out of range");
                     return;
                 }
-                instr = is_64bit ? 0xD3400000 : 0x53000000;
+                instr = is_64bit ? ARM64_LSL_IMM : (ARM64_LSL_IMM & ~(1U << 31));
                 instr |= ((width - rm_or_imm) & 0x3F) << 16;  /* immr */
                 instr |= (width - 1) << 10;                   /* imms */
                 break;
@@ -767,7 +766,7 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
                     tcc_error("shift immediate out of range");
                     return;
                 }
-                instr = is_64bit ? 0xD3400000 : 0x53000000;
+                instr = is_64bit ? ARM64_LSL_IMM : (ARM64_LSL_IMM & ~(1U << 31));
                 instr |= (rm_or_imm & 0x3F) << 16;            /* immr */
                 instr |= (width - 1) << 10;                   /* imms */
                 break;
@@ -776,7 +775,7 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
                     tcc_error("shift immediate out of range");
                     return;
                 }
-                instr = is_64bit ? 0x93400000 : 0x13000000;
+                instr = is_64bit ? ARM64_ASR_IMM : (ARM64_ASR_IMM & ~(1U << 31));
                 instr |= (rm_or_imm & 0x3F) << 16;            /* immr */
                 instr |= (width - 1) << 10;                   /* imms */
                 break;
@@ -785,42 +784,42 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
                     tcc_error("shift immediate out of range");
                     return;
                 }
-                instr = is_64bit ? 0x93C00000 : 0x13800000;
-                instr |= (rm_or_imm & 0x1F) << 16;            /* Rm = shift amount */
-                instr |= (rn & 0x1F) << 5;                    /* Rn = source */
-                instr |= rd & 0x1F;                           /* Rd = dest */
+                instr = is_64bit ? 0x93C00000U : 0x13800000U;
+                instr |= ARM64_RM(rm_or_imm);                 /* Rm = shift amount */
+                instr |= ARM64_RN(rn);                        /* Rn = source */
+                instr |= ARM64_RD(rd);                        /* Rd = dest */
                 emit_instr32(instr);
                 return;
             default:
                 tcc_error("unknown shift type");
                 return;
         }
-        instr |= (rn & 0x1F) << 5;
-        instr |= rd & 0x1F;
+        instr |= ARM64_RN(rn);
+        instr |= ARM64_RD(rd);
     } else {
         /* Shift by register */
         switch (shift_type) {
             case 0: /* LSL */
-                instr = 0x1AC02000;
+                instr = ARM64_LSL_REG;
                 break;
             case 1: /* LSR */
-                instr = 0x1AC02400;
+                instr = ARM64_LSR_REG;
                 break;
             case 2: /* ASR */
-                instr = 0x1AC02800;
+                instr = ARM64_ASR_REG;
                 break;
             case 3: /* ROR */
-                instr = 0x1AC02C00;
+                instr = ARM64_ROR_REG;
                 break;
             default:
                 tcc_error("unknown shift type");
                 return;
         }
         if (is_64bit)
-            instr |= 1U << 31;
-        instr |= (rm_or_imm & 0x1F) << 16;
-        instr |= (rn & 0x1F) << 5;
-        instr |= rd & 0x1F;
+            instr |= ARM64_SF(1);
+        instr |= ARM64_RM(rm_or_imm);
+        instr |= ARM64_RN(rn);
+        instr |= ARM64_RD(rd);
     }
     emit_instr32(instr);
 }
@@ -889,19 +888,19 @@ static void gen_barrier(int barrier_type, int option)
 
     switch (barrier_type) {
         case 0: /* ISB - Instruction Synchronization Barrier */
-            instr = 0xD50330DF;
+            instr = ARM64_ISB;
             break;
         case 1: /* DSB - Data Synchronization Barrier */
-            instr = 0xD503309F;
+            instr = ARM64_DSB;
             break;
         case 2: /* DMB - Data Memory Barrier */
-            instr = 0xD50330BF;
+            instr = ARM64_DMB;
             break;
         default:
             tcc_error("unknown barrier type");
             return;
     }
-    instr |= (option & 0xF) << 8;
+    instr |= ARM64_ISB_OPTION(option);
     emit_instr32(instr);
 }
 
@@ -1016,25 +1015,25 @@ static void asm_data_proc(TCCState *s1, int token)
     switch (token) {
         case TOK_ASM_add:
         case TOK_ASM_adds:
-            opcode = token == TOK_ASM_add ? 0x0B000000 : 0x2B000000;
+            opcode = token == TOK_ASM_add ? ARM64_ADD_REG : ARM64_ADDS_REG;
             break;
         case TOK_ASM_sub:
         case TOK_ASM_subs:
-            opcode = token == TOK_ASM_sub ? 0x4B000000 : 0x6B000000;
+            opcode = token == TOK_ASM_sub ? ARM64_SUB_REG : ARM64_SUBS_REG;
             break;
         case TOK_ASM_and:
         case TOK_ASM_ands:
-            opcode = token == TOK_ASM_and ? 0x0A000000 : 0x2A000000;
+            opcode = token == TOK_ASM_and ? ARM64_AND_REG : ARM64_ANDS_REG;
             break;
         case TOK_ASM_orr:
-            opcode = 0x2A000000;
+            opcode = ARM64_ORR_REG;
             break;
         case TOK_ASM_eor:
-            opcode = 0x4A000000;
+            opcode = ARM64_EOR_REG;
             break;
         case TOK_ASM_mul:
         case TOK_ASM_muls:
-            opcode = 0x1B007C00;
+            opcode = token == TOK_ASM_mul ? ARM64_MUL_REG : ARM64_MULS_REG;
             break;
         default:
             tcc_error("unsupported data processing instruction");
@@ -1118,13 +1117,13 @@ static void asm_ldst(TCCState *s1, int token)
     switch (token) {
         case TOK_ASM_ldr:
             if (op1.reg_type & REG_X) {
-                base_opcode = 0xF9400000;
+                base_opcode = ARM64_LDR_X;
                 size_log2 = 3;
             } else if (op1.reg_type & REG_W) {
-                base_opcode = 0xB9400000;
+                base_opcode = ARM64_LDR_W;
                 size_log2 = 2;
             } else if (op1.reg_type & REG_D) {
-                base_opcode = 0xFD400000;
+                base_opcode = ARM64_LDR_D;
                 size_log2 = 3;
             } else {
                 tcc_error("ldr requires a w, x, or d register");
@@ -1132,22 +1131,22 @@ static void asm_ldst(TCCState *s1, int token)
             }
             break;
         case TOK_ASM_ldrb:
-            base_opcode = 0x39400000;
+            base_opcode = ARM64_LDR_B;
             size_log2 = 0;
             break;
         case TOK_ASM_ldrh:
-            base_opcode = 0x79400000;
+            base_opcode = ARM64_LDR_H;
             size_log2 = 1;
             break;
         case TOK_ASM_str:
             if (op1.reg_type & REG_X) {
-                base_opcode = 0xF9000000;
+                base_opcode = ARM64_STR_X;
                 size_log2 = 3;
             } else if (op1.reg_type & REG_W) {
-                base_opcode = 0xB9000000;
+                base_opcode = ARM64_STR_W;
                 size_log2 = 2;
             } else if (op1.reg_type & REG_D) {
-                base_opcode = 0xFD000000;
+                base_opcode = ARM64_STR_D;
                 size_log2 = 3;
             } else {
                 tcc_error("str requires a w, x, or d register");
@@ -1155,11 +1154,11 @@ static void asm_ldst(TCCState *s1, int token)
             }
             break;
         case TOK_ASM_strb:
-            base_opcode = 0x39000000;
+            base_opcode = ARM64_STR_B;
             size_log2 = 0;
             break;
         case TOK_ASM_strh:
-            base_opcode = 0x79000000;
+            base_opcode = ARM64_STR_H;
             size_log2 = 1;
             break;
         default:
@@ -1199,23 +1198,23 @@ static void asm_ldst_pair(TCCState *s1, int token)
 
     if ((op1.reg_type & REG_X) && (op2.reg_type & REG_X)) {
         if (token == TOK_ASM_stp) {
-            base_opcode = op3.addr_mode == ADDR_PRE ? 0xA9800000 :
-                          op3.addr_mode == ADDR_POST ? 0xA8800000 :
-                          0xA9000000;
+            base_opcode = op3.addr_mode == ADDR_PRE ? ARM64_STP_X_PRE :
+                          op3.addr_mode == ADDR_POST ? ARM64_STP_X_POST :
+                          ARM64_STP_X;
         } else {
-            base_opcode = op3.addr_mode == ADDR_PRE ? 0xA9C00000 :
-                          op3.addr_mode == ADDR_POST ? 0xA8C00000 :
-                          0xA9400000;
+            base_opcode = op3.addr_mode == ADDR_PRE ? ARM64_LDP_X_PRE :
+                          op3.addr_mode == ADDR_POST ? ARM64_LDP_X_POST :
+                          ARM64_LDP_X;
         }
     } else if ((op1.reg_type & REG_D) && (op2.reg_type & REG_D)) {
         if (token == TOK_ASM_stp) {
-            base_opcode = op3.addr_mode == ADDR_PRE ? 0x6D800000 :
-                          op3.addr_mode == ADDR_POST ? 0x6C800000 :
-                          0x6D000000;
+            base_opcode = op3.addr_mode == ADDR_PRE ? ARM64_STP_D_PRE :
+                          op3.addr_mode == ADDR_POST ? ARM64_STP_D_POST :
+                          ARM64_STP_D;
         } else {
-            base_opcode = op3.addr_mode == ADDR_PRE ? 0x6DC00000 :
-                          op3.addr_mode == ADDR_POST ? 0x6CC00000 :
-                          0x6D400000;
+            base_opcode = op3.addr_mode == ADDR_PRE ? ARM64_LDP_D_PRE :
+                          op3.addr_mode == ADDR_POST ? ARM64_LDP_D_POST :
+                          ARM64_LDP_D;
         }
     } else {
         tcc_error("stp/ldp requires matching x or d registers");
@@ -1646,19 +1645,19 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
 
                 if (regs_allocated[reg1]) {
                     if (reg2 >= 0 && regs_allocated[reg2]) {
-                        uint32_t instr = 0xA9000000;
+                        uint32_t instr = ARM64_STP_X;
                         int offset = ((i - first_saved) / 2) * 8;
-                        instr |= (offset & 0x7F) << 15;
-                        instr |= (reg2 & 0x1F) << 10;
-                        instr |= (reg1 & 0x1F) << 5;
-                        instr |= 31 & 0x1F;
+                        instr |= ARM64_IMM7(offset >> 3);
+                        instr |= ARM64_RT2(reg2);
+                        instr |= ARM64_RN(reg1);
+                        instr |= ARM64_RD(31);
                         emit_instr32(instr);
                     } else {
-                        uint32_t instr = 0xF9000000;
+                        uint32_t instr = ARM64_STR_X;
                         int offset = (i - first_saved) * 8;
-                        instr |= ((offset >> 3) & 0xFFF) << 10;
-                        instr |= (reg1 & 0x1F) << 5;
-                        instr |= 31 & 0x1F;
+                        instr |= ARM64_IMM12(offset >> 3);
+                        instr |= ARM64_RN(reg1);
+                        instr |= ARM64_RT(31);
                         emit_instr32(instr);
                     }
                 }
@@ -1707,21 +1706,21 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
 
             if (regs_allocated[reg1]) {
                 if (reg2 >= 0 && regs_allocated[reg2] && i > 0) {
-                    uint32_t instr = 0xA9400000;
+                    uint32_t instr = ARM64_LDP_X;
                     int pair_idx = i - 1;
                     int offset = (pair_idx / 2) * 8;
-                    instr |= ((offset >> 3) & 0x7F) << 15;
-                    instr |= (reg2 & 0x1F) << 10;
-                    instr |= (reg1 & 0x1F) << 5;
-                    instr |= 31 & 0x1F;
+                    instr |= ARM64_IMM7(offset >> 3);
+                    instr |= ARM64_RT2(reg2);
+                    instr |= ARM64_RN(reg1);
+                    instr |= ARM64_RD(31);
                     emit_instr32(instr);
                     i--;
                 } else {
-                    uint32_t instr = 0xF9400000;
+                    uint32_t instr = ARM64_LDR_X;
                     int offset = i * 8;
-                    instr |= ((offset >> 3) & 0xFFF) << 10;
-                    instr |= (reg1 & 0x1F) << 5;
-                    instr |= 31 & 0x1F;
+                    instr |= ARM64_IMM12(offset >> 3);
+                    instr |= ARM64_RN(reg1);
+                    instr |= ARM64_RT(31);
                     emit_instr32(instr);
                 }
             }
