@@ -586,7 +586,11 @@
 /* ARM64_MOVI_W/X removed: MOVI is a SIMD&FP instruction, not general-purpose */
 /* Use MOVZ/MOVN/MOVK for general-purpose, or SIMD MOVI variants (0x0F000400, etc.) */
 
-/* Move wide immediate shift field */
+/* MOVZ/MOVN 64-bit base opcodes */
+#define ARM64_MOVZ64      0xD2800000U  /* MOVZ (64-bit), use with ARM64_HW() */
+#define ARM64_MOVN64      0x92800000U  /* MOVN (64-bit), use with ARM64_HW() */
+
+/* Move wide immediate shift field (LSL #0/16/32/48 encoded as hw*16) */
 #define ARM64_HW(v)       (((uint32_t)(v) & 3) << 21)
 
 /* Load/store register (unsigned immediate) */
@@ -694,6 +698,19 @@
 #define ARM64_LSR_IMM     0xD3400000U
 #define ARM64_ASR_IMM     0x93400000U
 
+/* Shifted register encoding for ORR/AND/EOR */
+#define ARM64_SHIFT_LSL(imm)  (((uint32_t)(imm) & 63) << 10)
+#define ARM64_SHIFT_LSR(imm)  (0x00200000U | (((uint32_t)(imm) & 63) << 10))
+#define ARM64_SHIFT_ASR(imm)  (0x00400000U | (((uint32_t)(imm) & 63) << 10))
+#define ARM64_SHIFT_ROR(imm)  (0x00600000U | (((uint32_t)(imm) & 63) << 10))
+
+/* UBFM/SBFM immediate fields (for LSL/LSR/ASR immediate aliases) */
+#define ARM64_IMM_R(r)        (((uint32_t)(r) & 0x3F) << 16)
+#define ARM64_IMM_S(s)        (((uint32_t)(s) & 0x3F) << 10)
+
+/* Extended register encoding */
+#define ARM64_EXTEND_LSL(lsl) (((uint32_t)(lsl) & 7) << 10)
+
 /* MOV (register) - ORR with zero register */
 #define ARM64_MOV_REG     0x2A0003E0U
 
@@ -757,6 +774,14 @@
 /* ARM64_FMOV_S_D removed: 0x4EA01C00 is SIMD vector, not scalar FMOV */
 /* Use 0x1E204000 for FMOV Sd,Sn or 0x1E604000 variant for cross-size */
 
+/* FMOV variants for code generator */
+#define ARM64_FMOV_SCALAR 0x1E604000U  /* FMOV Dd, Dn (scalar FP) */
+#define ARM64_FMOV_XD     0x9E660000U  /* FMOV Xd, Dn (FP to GP 64-bit) */
+#define ARM64_FMOV_WS     0x1E260000U  /* FMOV Wd, Sn (FP to GP 32-bit) */
+
+/* MOV vector (ORR vector register alias) */
+#define ARM64_MOV_V16B    0x4EA01C00U  /* MOV Vd.16B, Vn.16B (ORR vector, Rm=Rn alias) */
+
 /* Load/Store SIMD&FP - Base opcodes (register fields must be filled in) */
 #define ARM64_STR_Q_PRE   0x3C800000U  /* STR Q pre-index base */
 #define ARM64_LDR_Q_POST  0x3CC00000U  /* LDR Q post-index base */
@@ -776,6 +801,9 @@
 /* Verified from previous section */
 #define ARM64_FCMP        0x1E202008U  /* FCMP with zero */
 #define ARM64_SDIV        0x1AC00C00U  /* SDIV (32-bit) */
+
+/* EXTR (Extract) - 64-bit variant */
+#define ARM64_EXTR64      0x93C00000U  /* EXTR Xd, Xn, Xm, #imm (64-bit) */
 
 /* ARM64_MUL removed - use ARM64_MUL_REG with gen_dp_reg() */
 
