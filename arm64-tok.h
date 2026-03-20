@@ -627,10 +627,16 @@
 #define ARM64_STR_B_REG   0x38206800U
 #define ARM64_STR_H_REG   0x78206800U
 
+/* Load/store (pre/post-indexed) */
+#define ARM64_STR_X_PRE   0xF8000000U  /* STR X pre-indexed base */
+#define ARM64_LDR_X_POST  0xF8400000U  /* LDR X post-indexed base */
+
 /* SIMD load/store (unsigned immediate) */
+#define ARM64_LDR_SCALAR  0x3D400000U  /* Base for scalar load (size built dynamically) */
 #define ARM64_LDR_S_VEC   0xBD400000U
 #define ARM64_LDR_D_VEC   0xFD400000U
 #define ARM64_LDR_Q_VEC   0x3DC00000U
+#define ARM64_STR_SCALAR  0x3D000000U  /* Base for scalar store (size built dynamically) */
 #define ARM64_STR_S_VEC   0xBD000000U
 #define ARM64_STR_D_VEC   0xFD000000U
 #define ARM64_STR_Q_VEC   0x3D800000U
@@ -696,6 +702,7 @@
 /* Shifts (immediate - UBFM/SBFM) */
 #define ARM64_LSL_IMM     0xD3400000U
 #define ARM64_LSR_IMM     0xD3400000U
+#define ARM64_LSR_IMM_32  0x53000000U  /* 32-bit LSR base */
 #define ARM64_ASR_IMM     0x93400000U
 
 /* Shifted register encoding for ORR/AND/EOR */

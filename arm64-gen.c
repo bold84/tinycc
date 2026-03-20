@@ -349,14 +349,14 @@ static void arm64_ldrv(int sz_, int dst, int bas, uint64_t off)
     uint64_t scaled_mask = 0xffful << sz;
 
     if (!(off & ~scaled_mask))
-        o(0x3d400000 | dst | bas << 5 | off << (10 - sz) |
+        o(ARM64_LDR_SCALAR | dst | bas << 5 | off << (10 - sz) |
           (sz & 4) << 21 | (sz & 3) << 30); // ldr (s|d|q)(dst),[x(bas),#(off)]
     else if (off < 256 || -off <= 256)
-        o(0x3c400000 | dst | bas << 5 | (off & 511) << 12 |
+        o(ARM64_LDUR_Q_SIMD | dst | bas << 5 | (off & 511) << 12 |
           (sz & 4) << 21 | (sz & 3) << 30); // ldur (s|d|q)(dst),[x(bas),#(off)]
     else {
         arm64_movimm(30, off); // use x30 for offset
-        o(0x3c606800 | dst | bas << 5 | (uint32_t)30 << 16 |
+        o(ARM64_LDR_Q_REG | dst | bas << 5 | (uint32_t)30 << 16 |
           sz << 30 | (sz & 4) << 21); // ldr (s|d|q)(dst),[x(bas),x30]
     }
 }
