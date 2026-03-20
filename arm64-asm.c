@@ -884,7 +884,9 @@ static void asm_data_proc(TCCState *s1, int token)
                 tcc_error("immediate operand not valid for this instruction");
         } else {
             rm = op3.reg;
-            is_64bit = (op1.reg_type & REG_X) || (op2.reg_type & REG_X) || (op3.reg_type & REG_X);
+            is_64bit = (op1.reg_type & REG_X);
+            if (is_64bit != !!(op2.reg_type & REG_X) || is_64bit != !!(op3.reg_type & REG_X))
+                tcc_error("mismatched register widths");
             gen_dp_reg(opcode, rd, rn, rm, is_64bit);
         }
     } else if (op2.type & OP_IM) {
