@@ -3,8 +3,8 @@
  *  ARM64 (AArch64) assembler for TCC
  *
  *  Based on ARM64 Architecture Reference Manual
- *  Supports AArch64 assembler parsing plus basic inline asm strings.
- *  Extended inline asm with operands or clobbers is not yet implemented.
+ *  Supports AArch64 assembler parsing and extended inline asm
+ *  with operands, constraints, and clobbers.
  */
 
 #ifdef TARGET_DEFS_ONLY
@@ -45,6 +45,46 @@ enum {
 #define OP_IM      (1 << OPT_IM)
 #define OP_ADDR    (1 << OPT_ADDR)
 #define OP_COND    (1 << OPT_COND)
+
+/* Register allocation masks */
+#define REG_OUT_MASK 0x01
+#define REG_IN_MASK  0x02
+
+#define is_reg_allocated(reg) (regs_allocated[reg] & reg_mask)
+
+/* ARM64 register constants */
+#define TREG_X0  0
+#define TREG_X1  1
+#define TREG_X2  2
+#define TREG_X3  3
+#define TREG_X4  4
+#define TREG_X5  5
+#define TREG_X6  6
+#define TREG_X7  7
+#define TREG_X8  8
+#define TREG_X9  9
+#define TREG_X10 10
+#define TREG_X11 11
+#define TREG_X12 12
+#define TREG_X13 13
+#define TREG_X14 14
+#define TREG_X15 15
+#define TREG_X16 16
+#define TREG_X17 17
+#define TREG_X18 18
+#define TREG_X19 19
+#define TREG_X20 20
+#define TREG_X21 21
+#define TREG_X22 22
+#define TREG_X23 23
+#define TREG_X24 24
+#define TREG_X25 25
+#define TREG_X26 26
+#define TREG_X27 27
+#define TREG_X28 28
+#define TREG_X29 29
+#define TREG_X30 30
+#define TREG_SP  31
 
 typedef struct Operand {
     uint32_t type;
@@ -533,6 +573,115 @@ static void gen_mov_reg(int rd, int rm, int is_64bit)
     instr |= (rm & 0x1F) << 16;
     instr |= rd & 0x1F;
     emit_instr32(instr);
+}
+
+/* return the constraint priority (we allocate first the lowest
+   numbered constraints) */
+static inline int constraint_priority(const char *str)
+{
+    int priority, c, pr;
+
+    priority = 0;
+    for (;;) {
+        c = *str++;
+        if (c == '\0')
+            break;
+        switch (c) {
+        case '=':
+        case '+':
+        case '&':
+            continue;
+        case 'r':
+            pr = 1;
+            break;
+        case 'w':
+            pr = 2;
+            break;
+        case 'f':
+        case 'x':
+            pr = 3;
+            break;
+        case 'm':
+            pr = 4;
+            break;
+        case 'i':
+            pr = 5;
+            break;
+        case 'I':
+        case 'J':
+        case 'K':
+        case 'L':
+            pr = 6;
+            break;
+        case 'n':
+            pr = 7;
+            break;
+        case 'g':
+            pr = 8;
+            break;
+        default:
+            tcc_warning("unknown constraint '%c'", c);
+            pr = 0;
+            break;
+        }
+        if (pr > priority)
+            priority = pr;
+    }
+    return priority;
+}
+
+static const char *skip_constraint_modifiers(const char *p)
+{
+    while (*p == '=' || *p == '&' || *p == '+' || *p == '%')
+        p++;
+    return p;
+}
+
+static int is_valid_add_imm(int64_t val)
+{
+    return val >= 0 && val <= 4095;
+}
+
+static int is_valid_logical_imm(int64_t val, int bits)
+{
+    uint64_t uval = val;
+    int i, shift;
+    
+    if (uval == 0)
+        return 1;
+    
+    for (shift = 0; shift < bits; shift += 2) {
+        uint64_t mask = ((uint64_t)1 << (bits - shift)) - 1;
+        if ((uval & mask) == uval)
+            return 1;
+    }
+    
+    for (i = 0; i < 6; i++) {
+        uint64_t pattern = uval & 0x3F;
+        if (pattern == 0 || pattern == 0x3F) {
+            uint64_t shifted = uval >> (i * 2);
+            if ((shifted & ((uint64_t)1 << (bits - i * 2)) - 1) == 0)
+                return 1;
+        }
+    }
+    
+    return 0;
+}
+
+static int is_valid_movw_imm(int64_t val)
+{
+    uint64_t uval = (uint64_t)val;
+    
+    if (uval <= 0xFFFF)
+        return 1;
+    if (uval >= 0xFFFF0000 && (uval & 0xFFFF) == 0)
+        return 1;
+    if (uval >= 0xFFFF00000000ULL && (uval & 0xFFFFFFFFULL) == 0)
+        return 1;
+    if ((uval & 0xFFFFFFFF00000000ULL) == 0)
+        return 1;
+    
+    return 0;
 }
 
 static int operand_is_sp(const Operand *op)
@@ -1456,29 +1605,138 @@ ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
     }
 }
 
-static int asm_has_clobbers(const uint8_t *clobber_regs)
-{
-    int i;
-    for (i = 0; i < NB_ASM_REGS; ++i)
-        if (clobber_regs[i])
-            return 1;
-    return 0;
-}
-
-/* Basic inline asm strings are assembled directly by tccasm.c.
-   asm goto labels also work through operand substitution there.
-   Operand allocation and clobber handling are still unsupported here. */
 ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
                           int nb_outputs, int is_output,
                           uint8_t *clobber_regs,
                           int out_reg)
 {
-    (void)operands;
-    (void)nb_outputs;
-    (void)is_output;
+    uint8_t regs_allocated[NB_ASM_REGS];
+    ASMOperand *op;
+    int i, reg;
+    static const uint8_t reg_saved[] = {
+        19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+        29, 30
+    };
 
-    if (nb_operands > 0 || asm_has_clobbers(clobber_regs) || out_reg >= 0)
-        tcc_error("ARM64 extended inline asm is not implemented");
+    memcpy(regs_allocated, clobber_regs, sizeof(regs_allocated));
+    for (i = 0; i < nb_operands; i++) {
+        op = &operands[i];
+        if (op->reg >= 0)
+            regs_allocated[op->reg] = 1;
+    }
+
+    if (!is_output) {
+        int saved_count = 0;
+        int first_saved = -1;
+        
+        for (i = 0; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i++) {
+            reg = reg_saved[i];
+            if (regs_allocated[reg]) {
+                if (first_saved < 0)
+                    first_saved = i;
+                saved_count++;
+            }
+        }
+        
+        if (saved_count > 0) {
+            int stack_size = ((saved_count + 1) / 2) * 16;
+            gen_sub_imm(31, 31, stack_size, 1, 0);
+            
+            for (i = first_saved; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i += 2) {
+                int reg1 = reg_saved[i];
+                int reg2 = (i + 1 < sizeof(reg_saved)/sizeof(reg_saved[0])) ? reg_saved[i + 1] : -1;
+                
+                if (regs_allocated[reg1]) {
+                    if (reg2 >= 0 && regs_allocated[reg2]) {
+                        uint32_t instr = 0xA9000000;
+                        int offset = ((i - first_saved) / 2) * 8;
+                        instr |= (offset & 0x7F) << 15;
+                        instr |= (reg2 & 0x1F) << 10;
+                        instr |= (reg1 & 0x1F) << 5;
+                        instr |= 31 & 0x1F;
+                        emit_instr32(instr);
+                    } else {
+                        uint32_t instr = 0xF9000000;
+                        int offset = (i - first_saved) * 8;
+                        instr |= ((offset >> 3) & 0xFFF) << 10;
+                        instr |= (reg1 & 0x1F) << 5;
+                        instr |= 31 & 0x1F;
+                        emit_instr32(instr);
+                    }
+                }
+            }
+        }
+
+        for (i = 0; i < nb_operands; i++) {
+            op = &operands[i];
+            if (op->reg >= 0) {
+                if ((op->vt->r & VT_VALMASK) == VT_LLOCAL && op->is_memory) {
+                    SValue sv;
+                    sv = *op->vt;
+                    sv.r = (sv.r & ~VT_VALMASK) | VT_LOCAL | VT_LVAL;
+                    sv.type.t = VT_PTR;
+                    load(op->reg, &sv);
+                } else if (i >= nb_outputs || op->is_rw) {
+                    load(op->reg, op->vt);
+                }
+            }
+        }
+    } else {
+        for (i = 0; i < nb_outputs; i++) {
+            op = &operands[i];
+            if (op->reg >= 0) {
+                if ((op->vt->r & VT_VALMASK) == VT_LLOCAL) {
+                    if (!op->is_memory) {
+                        SValue sv;
+                        sv = *op->vt;
+                        sv.r = (sv.r & ~VT_VALMASK) | VT_LOCAL;
+                        sv.type.t = VT_PTR;
+                        load(out_reg, &sv);
+
+                        sv = *op->vt;
+                        sv.r = (sv.r & ~VT_VALMASK) | out_reg;
+                        store(op->reg, &sv);
+                    }
+                } else {
+                    store(op->reg, op->vt);
+                }
+            }
+        }
+        
+        for (i = sizeof(reg_saved)/sizeof(reg_saved[0]) - 1; i >= 0; i--) {
+            int reg1 = reg_saved[i];
+            int reg2 = (i > 0) ? reg_saved[i - 1] : -1;
+            
+            if (regs_allocated[reg1]) {
+                if (reg2 >= 0 && regs_allocated[reg2] && i > 0) {
+                    uint32_t instr = 0xA9400000;
+                    int pair_idx = i - 1;
+                    int offset = (pair_idx / 2) * 8;
+                    instr |= ((offset >> 3) & 0x7F) << 15;
+                    instr |= (reg2 & 0x1F) << 10;
+                    instr |= (reg1 & 0x1F) << 5;
+                    instr |= 31 & 0x1F;
+                    emit_instr32(instr);
+                    i--;
+                } else {
+                    uint32_t instr = 0xF9400000;
+                    int offset = i * 8;
+                    instr |= ((offset >> 3) & 0xFFF) << 10;
+                    instr |= (reg1 & 0x1F) << 5;
+                    instr |= 31 & 0x1F;
+                    emit_instr32(instr);
+                }
+            }
+        }
+        
+        for (i = 0; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i++) {
+            reg = reg_saved[i];
+            if (regs_allocated[reg]) {
+                gen_add_imm(31, 31, 16, 1, 0);
+                break;
+            }
+        }
+    }
 }
 
 ST_FUNC void asm_compute_constraints(ASMOperand *operands,
@@ -1486,13 +1744,195 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
                                      const uint8_t *clobber_regs,
                                      int *pout_reg)
 {
-    (void)operands;
-    (void)nb_outputs;
+    ASMOperand *op;
+    int sorted_op[MAX_ASM_OPERANDS];
+    int i, j, k, p1, p2, tmp, reg, c, reg_mask;
+    const char *str;
+    uint8_t regs_allocated[NB_ASM_REGS];
 
-    if (pout_reg)
-        *pout_reg = -1;
-    if (nb_operands > 0 || asm_has_clobbers(clobber_regs))
-        tcc_error("ARM64 extended inline asm is not implemented");
+    for (i = 0; i < nb_operands; i++) {
+        op = &operands[i];
+        op->input_index = -1;
+        op->ref_index = -1;
+        op->reg = -1;
+        op->is_memory = 0;
+        op->is_rw = 0;
+        op->is_llong = 0;
+    }
+
+    for (i = 0; i < nb_operands; i++) {
+        op = &operands[i];
+        str = op->constraint;
+        str = skip_constraint_modifiers(str);
+        if (isnum(*str) || *str == '[') {
+            k = find_constraint(operands, nb_operands, str, NULL);
+            if ((unsigned)k >= i || i < nb_outputs)
+                tcc_error("invalid reference in constraint %d ('%s')", i, str);
+            op->ref_index = k;
+            if (operands[k].input_index >= 0)
+                tcc_error("cannot reference twice the same operand");
+            operands[k].input_index = i;
+            op->priority = 5;
+        } else if ((op->vt->r & VT_VALMASK) == VT_LOCAL
+                   && op->vt->sym
+                   && (reg = op->vt->sym->r & VT_VALMASK) < VT_CONST) {
+            op->priority = 1;
+            op->reg = reg;
+        } else {
+            op->priority = constraint_priority(str);
+        }
+    }
+
+    for (i = 0; i < nb_operands; i++)
+        sorted_op[i] = i;
+    for (i = 0; i < nb_operands - 1; i++) {
+        for (j = i + 1; j < nb_operands; j++) {
+            p1 = operands[sorted_op[i]].priority;
+            p2 = operands[sorted_op[j]].priority;
+            if (p2 < p1) {
+                tmp = sorted_op[i];
+                sorted_op[i] = sorted_op[j];
+                sorted_op[j] = tmp;
+            }
+        }
+    }
+
+    for (i = 0; i < NB_ASM_REGS; i++) {
+        if (clobber_regs[i])
+            regs_allocated[i] = REG_IN_MASK | REG_OUT_MASK;
+        else
+            regs_allocated[i] = 0;
+    }
+
+    for (i = 0; i < nb_operands; i++) {
+        j = sorted_op[i];
+        op = &operands[j];
+        str = op->constraint;
+        if (op->ref_index >= 0)
+            continue;
+        if (op->input_index >= 0) {
+            reg_mask = REG_IN_MASK | REG_OUT_MASK;
+        } else if (j < nb_outputs) {
+            reg_mask = REG_OUT_MASK;
+        } else {
+            reg_mask = REG_IN_MASK;
+        }
+        if (op->reg >= 0) {
+            if (is_reg_allocated(op->reg))
+                tcc_error("asm regvar requests register that's taken already");
+            reg = op->reg;
+            goto reg_found;
+        }
+    try_next:
+        c = *str++;
+        switch (c) {
+        case '=':
+            goto try_next;
+        case '+':
+            op->is_rw = 1;
+        case '&':
+            if (j >= nb_outputs)
+                tcc_error("'%c' modifier can only be applied to outputs", c);
+            reg_mask = REG_IN_MASK | REG_OUT_MASK;
+            goto try_next;
+        case 'r':
+            for (reg = 0; reg < 31; reg++) {
+                if (!is_reg_allocated(reg))
+                    goto reg_found;
+            }
+            goto try_next;
+        case 'w':
+            for (reg = 0; reg < 31; reg++) {
+                if (!is_reg_allocated(reg))
+                    goto reg_found;
+            }
+            goto try_next;
+        case 'f':
+        case 'x':
+            for (reg = 32; reg < 64; reg++) {
+                if (!is_reg_allocated(reg))
+                    goto reg_found;
+            }
+            goto try_next;
+        case 'm':
+        case 'g':
+            if (j < nb_outputs || c == 'm') {
+                if ((op->vt->r & VT_VALMASK) == VT_LLOCAL) {
+                    for (reg = 0; reg < 31; reg++) {
+                        if (!(regs_allocated[reg] & REG_IN_MASK))
+                            goto reg_found1;
+                    }
+                    goto try_next;
+                reg_found1:
+                    regs_allocated[reg] |= REG_IN_MASK;
+                    op->reg = reg;
+                    op->is_memory = 1;
+                }
+            }
+            break;
+        case 'i':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL)) == VT_CONST))
+                goto try_next;
+            break;
+        case 'I':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
+            if (!is_valid_add_imm(op->vt->c.i))
+                goto try_next;
+            break;
+        case 'J':
+        case 'K':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
+            if (!is_valid_logical_imm(op->vt->c.i, 32))
+                goto try_next;
+            break;
+        case 'L':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
+            if (!is_valid_movw_imm(op->vt->c.i))
+                goto try_next;
+            break;
+        case 'n':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL)) == VT_CONST))
+                goto try_next;
+            break;
+        default:
+            tcc_warning("asm constraint %d ('%s') could not be satisfied",
+                       j, op->constraint);
+            break;
+        }
+        if (op->input_index >= 0) {
+            operands[op->input_index].reg = op->reg;
+            operands[op->input_index].is_llong = op->is_llong;
+        }
+        continue;
+    reg_found:
+        op->is_llong = 0;
+        op->reg = reg;
+        regs_allocated[reg] |= reg_mask;
+        if (op->input_index >= 0) {
+            operands[op->input_index].reg = op->reg;
+            operands[op->input_index].is_llong = op->is_llong;
+        }
+    }
+
+    *pout_reg = -1;
+    for (i = 0; i < nb_operands; i++) {
+        op = &operands[i];
+        if (op->reg >= 0 &&
+            (op->vt->r & VT_VALMASK) == VT_LLOCAL &&
+            !op->is_memory) {
+            for (reg = 0; reg < NB_ASM_REGS; reg++) {
+                if (!(regs_allocated[reg] & REG_OUT_MASK))
+                    goto reg_found2;
+            }
+            tcc_error("could not find free output register for reloading");
+        reg_found2:
+            *pout_reg = reg;
+            break;
+        }
+    }
 }
 
 /* Handle clobber list */
@@ -1501,8 +1941,11 @@ ST_FUNC void asm_clobber(uint8_t *clobber_regs, const char *str)
     int reg;
     TokenSym *ts;
 
-    if (!strcmp(str, "memory") || !strcmp(str, "cc") || !strcmp(str, "flags"))
+    if (!strcmp(str, "memory") || 
+        !strcmp(str, "cc") || 
+        !strcmp(str, "flags"))
         return;
+    
     ts = tok_alloc(str, strlen(str));
     reg = arm64_parse_regvar(ts->tok);
     if (reg == -1) {
