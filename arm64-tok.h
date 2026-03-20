@@ -601,8 +601,46 @@
 /* Load/store register (unscaled immediate) */
 #define ARM64_LDUR_X      0xF8400000U
 #define ARM64_LDUR_W      0xB8400000U
+#define ARM64_LDUR_B      0x38400000U
+#define ARM64_LDUR_H      0x78400000U
 #define ARM64_STUR_X      0xF8000000U
 #define ARM64_STUR_W      0xB8000000U
+#define ARM64_STUR_B      0x38000000U
+#define ARM64_STUR_H      0x78000000U
+
+/* Load/store register (register offset) */
+#define ARM64_LDR_X_REG   0xF8606800U
+#define ARM64_LDR_W_REG   0xB8606800U
+#define ARM64_LDR_B_REG   0x38606800U
+#define ARM64_LDR_H_REG   0x78606800U
+#define ARM64_STR_X_REG   0xF8206800U
+#define ARM64_STR_W_REG   0xB8206800U
+#define ARM64_STR_B_REG   0x38206800U
+#define ARM64_STR_H_REG   0x78206800U
+
+/* SIMD load/store (unsigned immediate) */
+#define ARM64_LDR_S_VEC   0xBD400000U
+#define ARM64_LDR_D_VEC   0xFD400000U
+#define ARM64_LDR_Q_VEC   0x3DC00000U
+#define ARM64_STR_S_VEC   0xBD000000U
+#define ARM64_STR_D_VEC   0xFD000000U
+#define ARM64_STR_Q_VEC   0x3D800000U
+
+/* SIMD load/store (unscaled immediate) */
+#define ARM64_LDUR_S_SIMD 0xBC400000U
+#define ARM64_LDUR_D_SIMD 0xFC400000U
+#define ARM64_LDUR_Q_SIMD 0x3C400000U
+#define ARM64_STUR_S_SIMD 0xBC000000U
+#define ARM64_STUR_D_SIMD 0xFC000000U
+#define ARM64_STUR_Q_SIMD 0x3C000000U
+
+/* SIMD load/store (register offset) */
+#define ARM64_LDR_S_REG   0xBC606800U
+#define ARM64_LDR_D_REG   0xFC606800U
+#define ARM64_LDR_Q_REG   0x3C606800U
+#define ARM64_STR_S_REG   0xBC206800U
+#define ARM64_STR_D_REG   0xFC206800U
+#define ARM64_STR_Q_REG   0x3C206800U
 
 /* Load/store pair */
 #define ARM64_LDP_X       0xA9400000U
@@ -717,3 +755,16 @@
 #define ARM64_FCMP        0x1E202008U
 #define ARM64_SDIV        0x1AC00C00U
 #define ARM64_MUL         0x1B007C00U
+#define ARM64_ORR_REG_MOV 0x2A0003E0U
+#define ARM64_ORR_REG_LSL 0x2A0043E0U
+#define ARM64_ORR_REG_LSL32 0x2A0083E0U
+#define ARM64_LSR_W_8     0x53087C00U
+#define ARM64_LSR_X_8     0xD348FC00U
+#define ARM64_LSR_X_16    0xD350FC00U
+#define ARM64_LSR_X_24    0xD358FC00U
+#define ARM64_LDP_X       0xA9400000U
+#define ARM64_B           0x14000000U
+#define ARM64_BL          0x94000000U
+#define ARM64_BR          0xD61F0000U
+#define ARM64_NOP         0xD503201FU
+#define ARM64_SUB_REG_LSL 0xCB2063FFU
