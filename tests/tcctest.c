@@ -3883,11 +3883,28 @@ int constant_p_var;
 
 int func(void);
 
+#ifndef __has_builtin
+#define __has_builtin(x) 0
+#endif
+
+#if defined(__TINYC__) || defined(__GNUC__) || defined(__clang__)
+#define HAVE_GNU_BUILTIN_TESTS 1
+#endif
+
+#if defined(__TINYC__)
+#define HAVE_GNU_CLRSB_BUILTINS 1
+#elif defined(__clang__)
+#if __has_builtin(__builtin_clrsb) && __has_builtin(__builtin_clrsbl) && __has_builtin(__builtin_clrsbll)
+#define HAVE_GNU_CLRSB_BUILTINS 1
+#endif
+#elif defined(__GNUC__) && __GNUC__ >= 6
+#define HAVE_GNU_CLRSB_BUILTINS 1
+#endif
 
 /* __builtin_clz and __builtin_ctz return random values for 0 */
 static void builtin_test_bits(unsigned long long x, int cnt[])
 {
-#if defined(__TINYC__) || GCC_MAJOR >= 4
+#ifdef HAVE_GNU_BUILTIN_TESTS
     cnt[0] += __builtin_ffs(x);
     cnt[1] += __builtin_ffsl(x);
     cnt[2] += __builtin_ffsll(x);
@@ -3900,8 +3917,7 @@ static void builtin_test_bits(unsigned long long x, int cnt[])
     if ((unsigned long) x) cnt[7] += __builtin_ctzl(x);
     if ((unsigned long long) x) cnt[8] += __builtin_ctzll(x);
 
-#if defined(__TINYC__) || (GCC_MAJOR >= 6 && (CC_NAME != CC_clang || GCC_MAJOR >= 11))
-/* Apple clang 10 does not have __builtin_clrsb[l[l]] */
+#ifdef HAVE_GNU_CLRSB_BUILTINS
     cnt[9] += __builtin_clrsb(x);
     cnt[10] += __builtin_clrsbl(x);
     cnt[11] += __builtin_clrsbll(x);
@@ -3922,7 +3938,7 @@ void builtin_test(void)
     short s;
     int i;
     long long ll;
-#if defined(__TINYC__) || GCC_MAJOR >= 3
+#ifdef HAVE_GNU_BUILTIN_TESTS
     COMPAT_TYPE(int, int);
     COMPAT_TYPE(int, unsigned int);
     COMPAT_TYPE(int, char);
