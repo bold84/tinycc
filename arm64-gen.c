@@ -263,8 +263,8 @@ ST_FUNC void gsym_addr(int t_, int a_)
         uint32_t next = read32le(ptr);
         if (a - t + 0x8000000 >= 0x10000000)
             tcc_error("branch out of range");
-        write32le(ptr, (a - t == 4 ? 0xd503201f : // nop
-                        0x14000000 | ((a - t) >> 2 & 0x3ffffff))); // b
+        write32le(ptr, (a - t == 4 ? ARM64_NOP :
+                        ARM64_B | ((a - t) >> 2 & 0x3ffffff)));
         t = next;
     }
 }
