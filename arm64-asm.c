@@ -262,6 +262,22 @@ static void parse_operand(TCCState *s1, Operand *op)
     }
 }
 
+/* Parse a symbolic/immediate expression operand used by branch instructions. */
+static void parse_expr_operand(TCCState *s1, Operand *op)
+{
+    op->type = OP_IM;
+    op->reg = -1;
+    op->reg2 = -1;
+    op->reg_type = 0;
+    op->shift = 0;
+    op->addr_mode = ADDR_OFF;
+    op->reg_tok = 0;
+
+    if (tok == '#' || tok == ':' || tok == '@' || tok == '$')
+        next();
+    asm_expr(s1, &op->e);
+}
+
 /* Parse address operand in brackets [xn, ...] */
 static void parse_addr_operand(TCCState *s1, Operand *op)
 {
@@ -1127,7 +1143,10 @@ static void asm_branch(TCCState *s1, int token)
         return;
     }
 
-    parse_operand(s1, &op);
+    if (token == TOK_ASM_br || token == TOK_ASM_blr || token == TOK_ASM_ret)
+        parse_operand(s1, &op);
+    else
+        parse_expr_operand(s1, &op);
 
     if (op.type & OP_IM) {
         sym = op.e.sym;
@@ -1200,7 +1219,7 @@ static void asm_cb(TCCState *s1, int token)
 
     parse_operand(s1, &op1);
     if (tok == ',') next();
-    parse_operand(s1, &op2);
+    parse_expr_operand(s1, &op2);
 
     rt = op1.reg;
     is_64bit = (op1.reg_type & REG_X);
