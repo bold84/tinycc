@@ -319,8 +319,8 @@ static uint64_t arm64_check_offset(int invert, int sz_, uint64_t off)
         return invert ? off : 0ul;
     else if (off & scaled_mask)
         return invert ? off & scaled_mask : off & ~scaled_mask;
-    else if (off & 0x1ff)
-        return invert ? off & 0x1ff : off & ~(uint64_t)0x1ff;
+    else if (off & (uint64_t)0x1ff)
+        return invert ? off & (uint64_t)0x1ff : off & ~(uint64_t)0x1ff;
     else
         return invert ? 0ul : off;
 }
@@ -1050,8 +1050,8 @@ static void arm64_sub_sp(uint64_t diff)
     }
 #endif
     if (!(diff >> 24)) {
-        if (diff & 0xfff)
-            o(0xd10003ff | (diff & 0xfff) << 10); // sub sp,sp,#low12
+        if (diff & 0xffful)
+            o(0xd10003ff | (diff & 0xffful) << 10); // sub sp,sp,#low12
         if (diff >> 12)
             o(0xd14003ff | (diff >> 12) << 10); // sub sp,sp,#high12,lsl #12
     } else {
