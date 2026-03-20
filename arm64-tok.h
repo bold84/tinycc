@@ -692,6 +692,10 @@
 #define ARM64_DMB         0xD50330BFU
 #define ARM64_MRS         0xD5380000U
 #define ARM64_MSR         0xD5180000U
+#define ARM64_MRS_FPCR    0xD53B4400U
+#define ARM64_MRS_FPSR    0xD53B4420U
+#define ARM64_MSR_FPCR    0xD51B4400U
+#define ARM64_MSR_FPSR    0xD51B4420U
 
 /* Shifts (register) */
 #define ARM64_LSL_REG     0x1AC02000U
@@ -809,7 +813,8 @@
 #define ARM64_FCMP        0x1E202008U  /* FCMP with zero */
 #define ARM64_SDIV        0x1AC00C00U  /* SDIV (32-bit) */
 
-/* EXTR (Extract) - 64-bit variant */
+/* EXTR (Extract) */
+#define ARM64_EXTR        0x13800000U  /* EXTR Wd, Wn, Wm, #imm (32-bit) */
 #define ARM64_EXTR64      0x93C00000U  /* EXTR Xd, Xn, Xm, #imm (64-bit) */
 
 /* ARM64_MUL removed - use ARM64_MUL_REG with gen_dp_reg() */

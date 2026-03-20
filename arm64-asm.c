@@ -707,10 +707,10 @@ static void gen_mrs(int rt, int sysreg)
 
     switch (sysreg) {
         case 0: /* FPCR */
-            instr = 0xD53B4400U;
+            instr = ARM64_MRS_FPCR;
             break;
         case 1: /* FPSR */
-            instr = 0xD53B4420U;
+            instr = ARM64_MRS_FPSR;
             break;
         default:
             tcc_error("unsupported system register");
@@ -725,10 +725,10 @@ static void gen_msr(int rt, int sysreg)
 
     switch (sysreg) {
         case 0: /* FPCR */
-            instr = 0xD51B4400U;
+            instr = ARM64_MSR_FPCR;
             break;
         case 1: /* FPSR */
-            instr = 0xD51B4420U;
+            instr = ARM64_MSR_FPSR;
             break;
         default:
             tcc_error("unsupported system register");
@@ -784,7 +784,7 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
                     tcc_error("shift immediate out of range");
                     return;
                 }
-                instr = is_64bit ? 0x93C00000U : 0x13800000U;
+                instr = is_64bit ? ARM64_EXTR64 : ARM64_EXTR;
                 instr |= ARM64_RM(rm_or_imm);                 /* Rm = shift amount */
                 instr |= ARM64_RN(rn);                        /* Rn = source */
                 instr |= ARM64_RD(rd);                        /* Rd = dest */
