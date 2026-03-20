@@ -603,42 +603,44 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
     if (is_imm) {
         /* Shift by immediate */
         switch (shift_type) {
-            case 0: /* LSL */
+            case 0: /* LSL - UBFM alias: immr = (width - shift) & 0x3F, imms = width - 1 */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? 0xD3400000 : 0x53000000;
-                instr |= ((width - rm_or_imm) & (width - 1)) << 16;
-                instr |= (width - 1 - rm_or_imm) << 10;
+                instr |= ((width - rm_or_imm) & 0x3F) << 16;  /* immr */
+                instr |= (width - 1) << 10;                   /* imms */
                 break;
-            case 1: /* LSR */
+            case 1: /* LSR - UBFM alias: immr = shift, imms = width - 1 */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? 0xD3400000 : 0x53000000;
-                instr |= rm_or_imm << 16;
-                instr |= (width - 1) << 10;
+                instr |= (rm_or_imm & 0x3F) << 16;            /* immr */
+                instr |= (width - 1) << 10;                   /* imms */
                 break;
-            case 2: /* ASR */
+            case 2: /* ASR - SBFM alias: immr = shift, imms = width - 1 */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? 0x93400000 : 0x13000000;
-                instr |= rm_or_imm << 16;
-                instr |= (width - 1) << 10;
+                instr |= (rm_or_imm & 0x3F) << 16;            /* immr */
+                instr |= (width - 1) << 10;                   /* imms */
                 break;
-            case 3: /* ROR */
+            case 3: /* ROR - EXTR alias: Rm = shift, Rn = source, Rd = dest */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? 0x93C00000 : 0x13800000;
-                instr |= (rn & 0x1F) << 16;
-                instr |= (rm_or_imm & (width - 1)) << 10;
-                break;
+                instr |= (rm_or_imm & 0x1F) << 16;            /* Rm = shift amount */
+                instr |= (rn & 0x1F) << 5;                    /* Rn = source */
+                instr |= rd & 0x1F;                           /* Rd = dest */
+                emit_instr32(instr);
+                return;
             default:
                 tcc_error("unknown shift type");
                 return;
