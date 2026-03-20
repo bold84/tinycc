@@ -360,9 +360,8 @@ static void parse_addr_operand(TCCState *s1, Operand *op)
     }
 }
 
-/* Generate MOVZ instruction */
 /* Generate MOVZ/MOVN/MOVK with base opcode */
-static void gen_mov_with_base(int rd, uint16_t imm, int shift, 
+static void gen_mov_with_base(int rd, uint16_t imm, int shift,
                               int is_64bit, uint32_t base_opcode)
 {
     uint32_t instr = base_opcode;
@@ -646,16 +645,16 @@ static int is_valid_logical_imm(int64_t val, int bits)
 {
     uint64_t uval = val;
     int i, shift;
-    
+
     if (uval == 0)
         return 1;
-    
+
     for (shift = 0; shift < bits; shift += 2) {
         uint64_t mask = ((uint64_t)1 << (bits - shift)) - 1;
         if ((uval & mask) == uval)
             return 1;
     }
-    
+
     for (i = 0; i < 6; i++) {
         uint64_t pattern = uval & 0x3F;
         if (pattern == 0 || pattern == 0x3F) {
@@ -664,14 +663,14 @@ static int is_valid_logical_imm(int64_t val, int bits)
                 return 1;
         }
     }
-    
+
     return 0;
 }
 
 static int is_valid_movw_imm(int64_t val)
 {
     uint64_t uval = (uint64_t)val;
-    
+
     if (uval <= 0xFFFF)
         return 1;
     if (uval >= 0xFFFF0000 && (uval & 0xFFFF) == 0)
@@ -680,7 +679,7 @@ static int is_valid_movw_imm(int64_t val)
         return 1;
     if ((uval & 0xFFFFFFFF00000000ULL) == 0)
         return 1;
-    
+
     return 0;
 }
 
@@ -1257,7 +1256,7 @@ static void asm_sysreg(TCCState *s1, int token)
 static int get_branch_condition(int branch_token)
 {
     int cond_token;
-    
+
     /* Map branch token to condition token (strip 'b' prefix) */
     switch (branch_token) {
         case TOK_ASM_beq: cond_token = TOK_ASM_eq; break;
@@ -1278,7 +1277,7 @@ static int get_branch_condition(int branch_token)
         case TOK_ASM_ble: cond_token = TOK_ASM_le; break;
         default: return -1;
     }
-    
+
     return parse_condition(cond_token);
 }
 
@@ -1550,9 +1549,8 @@ ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
             cstr_ccat(add_str, '#');
         if (r & VT_SYM) {
             const char *name = get_tok_str(sv->sym->v, NULL);
-            if (sv->sym->v >= SYM_FIRST_ANOM) {
+            if (sv->sym->v >= SYM_FIRST_ANOM)
                 get_asm_sym(tok_alloc(name, strlen(name))->tok, sv->sym);
-            }
             if (tcc_state->leading_underscore)
                 cstr_ccat(add_str, '_');
             cstr_cat(add_str, name, -1);
@@ -1628,7 +1626,7 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
     if (!is_output) {
         int saved_count = 0;
         int first_saved = -1;
-        
+
         for (i = 0; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i++) {
             reg = reg_saved[i];
             if (regs_allocated[reg]) {
@@ -1637,15 +1635,15 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
                 saved_count++;
             }
         }
-        
+
         if (saved_count > 0) {
             int stack_size = ((saved_count + 1) / 2) * 16;
             gen_sub_imm(31, 31, stack_size, 1, 0);
-            
+
             for (i = first_saved; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i += 2) {
                 int reg1 = reg_saved[i];
                 int reg2 = (i + 1 < sizeof(reg_saved)/sizeof(reg_saved[0])) ? reg_saved[i + 1] : -1;
-                
+
                 if (regs_allocated[reg1]) {
                     if (reg2 >= 0 && regs_allocated[reg2]) {
                         uint32_t instr = 0xA9000000;
@@ -1702,11 +1700,11 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
                 }
             }
         }
-        
+
         for (i = sizeof(reg_saved)/sizeof(reg_saved[0]) - 1; i >= 0; i--) {
             int reg1 = reg_saved[i];
             int reg2 = (i > 0) ? reg_saved[i - 1] : -1;
-            
+
             if (regs_allocated[reg1]) {
                 if (reg2 >= 0 && regs_allocated[reg2] && i > 0) {
                     uint32_t instr = 0xA9400000;
@@ -1728,7 +1726,7 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
                 }
             }
         }
-        
+
         for (i = 0; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i++) {
             reg = reg_saved[i];
             if (regs_allocated[reg]) {
@@ -1941,16 +1939,15 @@ ST_FUNC void asm_clobber(uint8_t *clobber_regs, const char *str)
     int reg;
     TokenSym *ts;
 
-    if (!strcmp(str, "memory") || 
-        !strcmp(str, "cc") || 
+    if (!strcmp(str, "memory") ||
+        !strcmp(str, "cc") ||
         !strcmp(str, "flags"))
         return;
-    
+
     ts = tok_alloc(str, strlen(str));
     reg = arm64_parse_regvar(ts->tok);
-    if (reg == -1) {
+    if (reg == -1)
         tcc_error("invalid clobber register '%s'", str);
-    }
     clobber_regs[reg] = 1;
 }
 
