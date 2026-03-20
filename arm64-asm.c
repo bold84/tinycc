@@ -293,17 +293,19 @@ static void parse_addr_operand(TCCState *s1, Operand *op)
 
     skip('[');
     reg = arm64_parse_regvar(tok);
-    if (reg >= 0 && reg < 32) {
-        op->reg = reg;
-        op->reg_tok = tok;
+    if (reg < 0 || reg >= 32) {
+        tcc_error("invalid register in address operand");
+        return;
+    }
+    op->reg = reg;
+    op->reg_tok = tok;
+    next();
+    /* Check for offset */
+    if (tok == ',') {
         next();
-        /* Check for offset */
-        if (tok == ',') {
+        if (tok == '#' || tok == '@' || tok == '$')
             next();
-            if (tok == '#' || tok == '@' || tok == '$')
-                next();
-            asm_expr(s1, &op->e);
-        }
+        asm_expr(s1, &op->e);
     }
     skip(']');
     if (tok == '!') {
