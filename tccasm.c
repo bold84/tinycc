@@ -1178,7 +1178,10 @@ static void subst_asm_operands(ASMOperand *operands, int nb_operands,
             modifier = 0;
             if (*str == 'c' || *str == 'n' ||
                 *str == 'b' || *str == 'w' || *str == 'h' || *str == 'k' ||
-		*str == 'q' || *str == 'l' ||
+                *str == 'q' || *str == 'l' ||
+#ifdef TCC_TARGET_ARM64
+                *str == 'x' || *str == 's' || *str == 'd' || *str == 'Z' ||
+#endif
 #ifdef TCC_TARGET_RISCV64
 		*str == 'z' ||
 #endif
@@ -1251,7 +1254,12 @@ static void parse_asm_operands(ASMOperand *operands, int *nb_operands_ptr,
                 if ((vtop->r & VT_LVAL) &&
                     ((vtop->r & VT_VALMASK) == VT_LLOCAL ||
                      (vtop->r & VT_VALMASK) < VT_CONST) &&
-                    !strchr(op->constraint, 'm')) {
+                    !strchr(op->constraint, 'm')
+#ifdef TCC_TARGET_ARM64
+                    && !strchr(op->constraint, 'Q')
+                    && !strstr(op->constraint, "Ump")
+#endif
+                    ) {
                     gv(RC_INT);
                 }
             }

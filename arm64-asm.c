@@ -86,6 +86,13 @@ enum {
 #define TREG_X30 30
 #define TREG_SP  31
 
+#ifdef TCC_TARGET_PE
+#define ARM64_FREG_BASE 19
+#else
+#define ARM64_FREG_BASE 20
+#endif
+#define ARM64_FREG_LAST (ARM64_FREG_BASE + 7)
+
 typedef struct Operand {
     uint32_t type;
     int8_t reg;
@@ -147,8 +154,8 @@ static void emit_instr32(uint32_t val)
     ind += 4;
 }
 
-/* Parse ARM64 register from token */
-static int arm64_parse_regvar(int t)
+/* Parse ARM64 register token for assembler syntax. */
+static int arm64_parse_asm_reg(int t)
 {
     /* X registers (64-bit) */
     if (t >= TOK_ASM_x0 && t <= TOK_ASM_x30)
@@ -249,6 +256,23 @@ static int parse_barrier_option_name(int t)
     return -1;
 }
 
+static int arm64_parse_regvar(int t)
+{
+    if (t >= TOK_ASM_x0 && t <= TOK_ASM_x30)
+        return t - TOK_ASM_x0;
+    if (t >= TOK_ASM_v0 && t <= TOK_ASM_v7)
+        return ARM64_FREG_BASE + (t - TOK_ASM_v0);
+    if (t >= TOK_ASM_d0 && t <= TOK_ASM_d7)
+        return ARM64_FREG_BASE + (t - TOK_ASM_d0);
+    if (t >= TOK_ASM_s0 && t <= TOK_ASM_s7)
+        return ARM64_FREG_BASE + (t - TOK_ASM_s0);
+    if (t >= TOK_ASM_h0 && t <= TOK_ASM_h7)
+        return ARM64_FREG_BASE + (t - TOK_ASM_h0);
+    if (t >= TOK_ASM_b0 && t <= TOK_ASM_b7)
+        return ARM64_FREG_BASE + (t - TOK_ASM_b0);
+    return -1;
+}
+
 /* Parse a single operand */
 static void parse_operand(TCCState *s1, Operand *op)
 {
@@ -269,7 +293,7 @@ static void parse_operand(TCCState *s1, Operand *op)
     }
 
     /* Register */
-    reg = arm64_parse_regvar(tok);
+    reg = arm64_parse_asm_reg(tok);
     if (reg >= 0) {
         op->type = OP_REG;
         op->reg = reg;
@@ -332,7 +356,7 @@ static void parse_addr_operand(TCCState *s1, Operand *op)
     op->reg_tok = 0;
 
     skip('[');
-    reg = arm64_parse_regvar(tok);
+    reg = arm64_parse_asm_reg(tok);
     if (reg < 0 || reg >= 32) {
         tcc_error("invalid register in address operand");
         return;
@@ -573,6 +597,98 @@ static void gen_mov_reg(int rd, int rm, int is_64bit)
     emit_instr32(instr);
 }
 
+static int arm64_asm_encode_bimm64(uint64_t x)
+{
+    int neg, rep, pos, len;
+
+    neg = x & 1;
+    if (neg)
+        x = ~x;
+    if (!x)
+        return -1;
+
+    if (x >> 2 == (x & ((((uint64_t)1) << (64 - 2)) - 1)))
+        rep = 2, x &= (((uint64_t)1) << 2) - 1;
+    else if (x >> 4 == (x & ((((uint64_t)1) << (64 - 4)) - 1)))
+        rep = 4, x &= (((uint64_t)1) << 4) - 1;
+    else if (x >> 8 == (x & ((((uint64_t)1) << (64 - 8)) - 1)))
+        rep = 8, x &= (((uint64_t)1) << 8) - 1;
+    else if (x >> 16 == (x & ((((uint64_t)1) << (64 - 16)) - 1)))
+        rep = 16, x &= (((uint64_t)1) << 16) - 1;
+    else if (x >> 32 == (x & ((((uint64_t)1) << (64 - 32)) - 1)))
+        rep = 32, x &= (((uint64_t)1) << 32) - 1;
+    else
+        rep = 64;
+
+    pos = 0;
+    if (!(x & ((((uint64_t)1) << 32) - 1)))
+        x >>= 32, pos += 32;
+    if (!(x & ((((uint64_t)1) << 16) - 1)))
+        x >>= 16, pos += 16;
+    if (!(x & ((((uint64_t)1) << 8) - 1)))
+        x >>= 8, pos += 8;
+    if (!(x & ((((uint64_t)1) << 4) - 1)))
+        x >>= 4, pos += 4;
+    if (!(x & ((((uint64_t)1) << 2) - 1)))
+        x >>= 2, pos += 2;
+    if (!(x & ((((uint64_t)1) << 1) - 1)))
+        x >>= 1, pos += 1;
+
+    len = 0;
+    if (!(~x & ((((uint64_t)1) << 32) - 1)))
+        x >>= 32, len += 32;
+    if (!(~x & ((((uint64_t)1) << 16) - 1)))
+        x >>= 16, len += 16;
+    if (!(~x & ((((uint64_t)1) << 8) - 1)))
+        x >>= 8, len += 8;
+    if (!(~x & ((((uint64_t)1) << 4) - 1)))
+        x >>= 4, len += 4;
+    if (!(~x & ((((uint64_t)1) << 2) - 1)))
+        x >>= 2, len += 2;
+    if (!(~x & ((((uint64_t)1) << 1) - 1)))
+        x >>= 1, len += 1;
+
+    if (x)
+        return -1;
+    if (neg) {
+        pos = (pos + len) & (rep - 1);
+        len = rep - len;
+    }
+    return ((0x1000 & rep << 6) | (((rep - 1) ^ 31) << 1 & 63) |
+            ((rep - pos) & (rep - 1)) << 6 | (len - 1));
+}
+
+static void gen_logical_imm(uint32_t opcode, int rd, int rn,
+                            uint64_t imm, int is_64bit)
+{
+    uint32_t instr;
+    uint64_t val;
+    int enc;
+
+    if (is_64bit)
+        val = imm;
+    else {
+        val = (uint32_t)imm;
+        val |= val << 32;
+    }
+
+    enc = arm64_asm_encode_bimm64(val);
+    if (enc < 0) {
+        tcc_error("logical immediate out of range");
+        return;
+    }
+
+    instr = opcode;
+    if (is_64bit)
+        instr |= ARM64_SF(1);
+    instr |= ARM64_N(enc >> 12);
+    instr |= ARM64_IMM_R(enc >> 6);
+    instr |= ARM64_IMM_S(enc);
+    instr |= ARM64_RN(rn);
+    instr |= ARM64_RD(rd);
+    emit_instr32(instr);
+}
+
 /* return the constraint priority (we allocate first the lowest
    numbered constraints) */
 static inline int constraint_priority(const char *str)
@@ -593,22 +709,35 @@ static inline int constraint_priority(const char *str)
             pr = 1;
             break;
         case 'w':
-            pr = 2;
-            break;
         case 'f':
         case 'x':
+        case 'y':
             pr = 3;
             break;
         case 'm':
+        case 'Q':
             pr = 4;
             break;
         case 'i':
+        case 'S':
             pr = 5;
+            break;
+        case 'U':
+            if (str[0] == 'm' && str[1] == 'p') {
+                str += 2;
+                pr = 4;
+                break;
+            }
+            tcc_warning("unknown constraint '%c'", c);
+            pr = 0;
             break;
         case 'I':
         case 'J':
         case 'K':
         case 'L':
+        case 'M':
+        case 'N':
+        case 'Z':
             pr = 6;
             break;
         case 'n':
@@ -642,28 +771,14 @@ static int is_valid_add_imm(int64_t val)
 
 static int is_valid_logical_imm(int64_t val, int bits)
 {
-    uint64_t uval = val;
-    int i, shift;
+    uint64_t uval;
 
-    if (uval == 0)
-        return 1;
-
-    for (shift = 0; shift < bits; shift += 2) {
-        uint64_t mask = ((uint64_t)1 << (bits - shift)) - 1;
-        if ((uval & mask) == uval)
-            return 1;
+    uval = (uint64_t)val;
+    if (bits == 32) {
+        uval = (uint32_t)uval;
+        uval |= uval << 32;
     }
-
-    for (i = 0; i < 6; i++) {
-        uint64_t pattern = uval & 0x3F;
-        if (pattern == 0 || pattern == 0x3F) {
-            uint64_t shifted = uval >> (i * 2);
-            if ((shifted & (((uint64_t)1 << (bits - i * 2)) - 1)) == 0)
-                return 1;
-        }
-    }
-
-    return 0;
+    return arm64_asm_encode_bimm64(uval) >= 0;
 }
 
 static int is_valid_movw_imm(int64_t val)
@@ -679,6 +794,53 @@ static int is_valid_movw_imm(int64_t val)
     if ((uval & 0xFFFFFFFF00000000ULL) == 0)
         return 1;
 
+    return 0;
+}
+
+static int arm64_memory_is_base_only(const SValue *sv)
+{
+    int r;
+
+    r = sv->r;
+    if ((r & VT_VALMASK) == VT_CONST)
+        return 0;
+    if ((r & VT_VALMASK) == VT_LOCAL)
+        return 0;
+    if ((r & VT_VALMASK) == VT_LLOCAL)
+        return 1;
+    if (r & VT_LVAL)
+        return (r & VT_VALMASK) < VT_CONST;
+    return 0;
+}
+
+static int arm64_memory_is_pair_suitable(const SValue *sv)
+{
+    int64_t offset;
+
+    if (arm64_memory_is_base_only(sv))
+        return 1;
+    if ((sv->r & VT_VALMASK) != VT_LOCAL)
+        return 0;
+
+    offset = (int64_t)sv->c.i;
+    return (offset & 7) == 0 && offset >= -512 && offset <= 504;
+}
+
+static int arm64_prepare_memory_operand(ASMOperand *op, uint8_t *regs_allocated)
+{
+    int reg;
+
+    if ((op->vt->r & VT_VALMASK) != VT_LLOCAL)
+        return 1;
+
+    for (reg = 0; reg < 31; reg++) {
+        if (!(regs_allocated[reg] & REG_IN_MASK)) {
+            regs_allocated[reg] |= REG_IN_MASK;
+            op->reg = reg;
+            op->is_memory = 1;
+            return 1;
+        }
+    }
     return 0;
 }
 
@@ -752,23 +914,23 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
     if (is_imm) {
         /* Shift by immediate */
         switch (shift_type) {
-            case 0: /* LSL - UBFM alias: immr = (width - shift) & 0x3F, imms = width - 1 */
+            case 0: /* LSL - UBFM alias */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
-                instr = is_64bit ? ARM64_LSL_IMM : (ARM64_LSL_IMM & ~(1U << 31));
-                instr |= ((width - rm_or_imm) & 0x3F) << 16;  /* immr */
-                instr |= (width - 1) << 10;                   /* imms */
+                instr = is_64bit ? ARM64_LSL_IMM : ARM64_LSR_IMM_32;
+                instr |= ARM64_IMM_R((width - rm_or_imm) & (width - 1));
+                instr |= ARM64_IMM_S(width - rm_or_imm - 1);
                 break;
             case 1: /* LSR - UBFM alias: immr = shift, imms = width - 1 */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
-                instr = is_64bit ? ARM64_LSL_IMM : (ARM64_LSL_IMM & ~(1U << 31));
-                instr |= (rm_or_imm & 0x3F) << 16;            /* immr */
-                instr |= (width - 1) << 10;                   /* imms */
+                instr = is_64bit ? ARM64_LSL_IMM : ARM64_LSR_IMM_32;
+                instr |= ARM64_IMM_R(rm_or_imm);
+                instr |= ARM64_IMM_S(width - 1);
                 break;
             case 2: /* ASR - SBFM alias: immr = shift, imms = width - 1 */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
@@ -776,18 +938,19 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
                     return;
                 }
                 instr = is_64bit ? ARM64_ASR_IMM : (ARM64_ASR_IMM & ~(1U << 31));
-                instr |= (rm_or_imm & 0x3F) << 16;            /* immr */
-                instr |= (width - 1) << 10;                   /* imms */
+                instr |= ARM64_IMM_R(rm_or_imm);
+                instr |= ARM64_IMM_S(width - 1);
                 break;
-            case 3: /* ROR - EXTR alias: Rm = shift, Rn = source, Rd = dest */
+            case 3: /* ROR - EXTR alias: Rm = source, Rn = source, imms = shift */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? ARM64_EXTR64 : ARM64_EXTR;
-                instr |= ARM64_RM(rm_or_imm);                 /* Rm = shift amount */
-                instr |= ARM64_RN(rn);                        /* Rn = source */
-                instr |= ARM64_RD(rd);                        /* Rd = dest */
+                instr |= ARM64_RM(rn);
+                instr |= ARM64_IMM_S(rm_or_imm);
+                instr |= ARM64_RN(rn);
+                instr |= ARM64_RD(rd);
                 emit_instr32(instr);
                 return;
             default:
@@ -868,13 +1031,24 @@ static void asm_shift(TCCState *s1, int token)
 
     if (tok == ',') {
         next();
-        /* Parse shift immediate - skip # prefix like arm-asm.c does */
-        if (tok == '#' || tok == '$')
-            next();
         parse_operand(s1, &op3);
-        shift_amount = op3.e.v;
         is_64bit = (op1.reg_type & REG_X);
-        gen_shift(rd, rn, shift_amount, shift_type, 1, is_64bit);
+        if (is_64bit != !!(op2.reg_type & REG_X)) {
+            tcc_error("mismatched register widths");
+            return;
+        }
+        if (op3.type & OP_REG) {
+            if (is_64bit != !!(op3.reg_type & REG_X)) {
+                tcc_error("mismatched register widths");
+                return;
+            }
+            gen_shift(rd, rn, op3.reg, shift_type, 0, is_64bit);
+        } else if (op3.type & OP_IM) {
+            shift_amount = op3.e.v;
+            gen_shift(rd, rn, shift_amount, shift_type, 1, is_64bit);
+        } else {
+            tcc_error("shift requires immediate or register operand");
+        }
     } else {
         tcc_error("shift requires immediate or register operand");
         return;
@@ -1059,14 +1233,26 @@ static void asm_data_proc(TCCState *s1, int token)
     if (tok == ',') {
         next();
         parse_operand(s1, &op3);
+        is_64bit = (op1.reg_type & REG_X);
+        if (is_64bit != !!(op2.reg_type & REG_X)) {
+            tcc_error("mismatched register widths");
+            return;
+        }
         if (op3.type & OP_IM) {
-            is_64bit = (op1.reg_type & REG_X);
             if (token == TOK_ASM_add || token == TOK_ASM_adds)
                 gen_add_imm(rd, rn, op3.e.v, is_64bit,
                             token == TOK_ASM_adds);
             else if (token == TOK_ASM_sub || token == TOK_ASM_subs)
                 gen_sub_imm(rd, rn, op3.e.v, is_64bit,
                             token == TOK_ASM_subs);
+            else if (token == TOK_ASM_and)
+                gen_logical_imm(ARM64_AND_IMM, rd, rn, op3.e.v, is_64bit);
+            else if (token == TOK_ASM_ands)
+                gen_logical_imm(ARM64_ANDS_IMM, rd, rn, op3.e.v, is_64bit);
+            else if (token == TOK_ASM_orr)
+                gen_logical_imm(ARM64_ORR_IMM_BASE, rd, rn, op3.e.v, is_64bit);
+            else if (token == TOK_ASM_eor)
+                gen_logical_imm(ARM64_EOR_IMM, rd, rn, op3.e.v, is_64bit);
             else
                 tcc_error("immediate operand not valid for this instruction");
         } else {
@@ -1075,7 +1261,6 @@ static void asm_data_proc(TCCState *s1, int token)
                 return;
             }
             rm = op3.reg;
-            is_64bit = (op1.reg_type & REG_X);
             if (is_64bit != !!(op2.reg_type & REG_X) || is_64bit != !!(op3.reg_type & REG_X))
                 tcc_error("mismatched register widths");
             gen_dp_reg(opcode, rd, rn, rm, is_64bit);
@@ -1539,10 +1724,17 @@ ST_FUNC void asm_opcode(TCCState *s1, int opcode)
 /* Substitute assembler operand */
 ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
 {
-    int r, reg, size, val;
+    int r, reg, size, fp_reg, align;
+    int64_t val;
+    uint64_t uval;
 
     r = sv->r;
     if ((r & VT_VALMASK) == VT_CONST) {
+        if ((modifier == 'w' || modifier == 'x') && !(r & VT_LVAL)
+            && !(r & VT_SYM) && sv->c.i == 0) {
+            cstr_cat(add_str, modifier == 'w' ? "wzr" : "xzr", -1);
+            return;
+        }
         if (!(r & VT_LVAL) && modifier != 'c' && modifier != 'n' &&
             modifier != 'P')
             cstr_ccat(add_str, '#');
@@ -1557,10 +1749,16 @@ ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
                 goto no_offset;
             cstr_ccat(add_str, '+');
         }
-        val = sv->c.i;
-        if (modifier == 'n')
-            val = -val;
-        cstr_printf(add_str, "%d", (int) sv->c.i);
+        uval = sv->c.i;
+        if (modifier == 'n') {
+            val = -(int64_t)uval;
+            cstr_printf(add_str, "%lld", (long long)val);
+        } else if (uval > 0x7fffffffffffffffULL) {
+            cstr_printf(add_str, "0x%llx", (unsigned long long)uval);
+        } else {
+            val = (int64_t)uval;
+            cstr_printf(add_str, "%lld", (long long)val);
+        }
       no_offset:;
     } else if ((r & VT_VALMASK) == VT_LOCAL) {
         cstr_printf(add_str, "[x29,#%d]", (int) sv->c.i);
@@ -1575,6 +1773,31 @@ ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
         if (reg >= VT_CONST)
             tcc_internal_error("");
 
+        if (ARM64_FREG_BASE <= reg && reg <= ARM64_FREG_LAST) {
+            fp_reg = reg - ARM64_FREG_BASE;
+            size = type_size(&sv->type, &align);
+
+            if (modifier == 0)
+                modifier = size <= 4 ? 's'
+                         : size == 8 ? 'd'
+                         : 'q';
+
+            switch (modifier) {
+            case 'b':
+            case 'h':
+            case 's':
+            case 'd':
+            case 'q':
+            case 'Z':
+                cstr_printf(add_str, "%c%d", modifier == 'Z' ? 'z' : modifier,
+                            fp_reg);
+                return;
+            default:
+                tcc_error("invalid operand modifier for SIMD/FP register");
+                return;
+            }
+        }
+
         /* choose register operand size */
         if ((sv->type.t & VT_BTYPE) == VT_BYTE ||
             (sv->type.t & VT_BTYPE) == VT_BOOL)
@@ -1584,12 +1807,14 @@ ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
         else
             size = 8;
 
-        if (modifier == 'b') {
-            size = 1;
-        } else if (modifier == 'w') {
-            size = 2;
-        } else if (modifier == 'k') {
+        if (modifier == 'x') {
+            size = 8;
+        } else if (modifier == 'w' || modifier == 'k') {
             size = 4;
+        } else if (modifier == 'b') {
+            size = 1;
+        } else if (modifier == 'h') {
+            size = 2;
         } else if (modifier == 'q') {
             size = 8;
         }
@@ -1609,7 +1834,8 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
 {
     uint8_t regs_allocated[NB_ASM_REGS];
     ASMOperand *op;
-    int i, reg;
+    int i, reg, saved_count, stack_size, stack_off;
+    int saved_regs[12];
     static const uint8_t reg_saved[] = {
         19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
         29, 30
@@ -1622,44 +1848,28 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
             regs_allocated[op->reg] = 1;
     }
 
+    saved_count = 0;
+    for (i = 0; i < sizeof(reg_saved) / sizeof(reg_saved[0]); i++) {
+        reg = reg_saved[i];
+        if (regs_allocated[reg])
+            saved_regs[saved_count++] = reg;
+    }
+    stack_size = ((saved_count + 1) / 2) * 16;
+
     if (!is_output) {
-        int saved_count = 0;
-        int first_saved = -1;
-
-        for (i = 0; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i++) {
-            reg = reg_saved[i];
-            if (regs_allocated[reg]) {
-                if (first_saved < 0)
-                    first_saved = i;
-                saved_count++;
-            }
-        }
-
         if (saved_count > 0) {
-            int stack_size = ((saved_count + 1) / 2) * 16;
             gen_sub_imm(31, 31, stack_size, 1, 0);
 
-            for (i = first_saved; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i += 2) {
-                int reg1 = reg_saved[i];
-                int reg2 = (i + 1 < sizeof(reg_saved)/sizeof(reg_saved[0])) ? reg_saved[i + 1] : -1;
-
-                if (regs_allocated[reg1]) {
-                    if (reg2 >= 0 && regs_allocated[reg2]) {
-                        uint32_t instr = ARM64_STP_X;
-                        int offset = ((i - first_saved) / 2) * 8;
-                        instr |= ARM64_IMM7(offset >> 3);
-                        instr |= ARM64_RT2(reg2);
-                        instr |= ARM64_RN(reg1);
-                        instr |= ARM64_RD(31);
-                        emit_instr32(instr);
-                    } else {
-                        uint32_t instr = ARM64_STR_X;
-                        int offset = (i - first_saved) * 8;
-                        instr |= ARM64_IMM12(offset >> 3);
-                        instr |= ARM64_RN(reg1);
-                        instr |= ARM64_RT(31);
-                        emit_instr32(instr);
-                    }
+            for (i = stack_off = 0; i < saved_count; ) {
+                if (i + 1 < saved_count) {
+                    gen_ldst_pair(ARM64_STP_X, saved_regs[i], saved_regs[i + 1],
+                                  TREG_SP, stack_off, 3);
+                    stack_off += 16;
+                    i += 2;
+                } else {
+                    gen_ldst_imm(ARM64_STR_X, saved_regs[i], TREG_SP,
+                                 stack_off, 3);
+                    i++;
                 }
             }
         }
@@ -1700,38 +1910,20 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
             }
         }
 
-        for (i = sizeof(reg_saved)/sizeof(reg_saved[0]) - 1; i >= 0; i--) {
-            int reg1 = reg_saved[i];
-            int reg2 = (i > 0) ? reg_saved[i - 1] : -1;
-
-            if (regs_allocated[reg1]) {
-                if (reg2 >= 0 && regs_allocated[reg2] && i > 0) {
-                    uint32_t instr = ARM64_LDP_X;
-                    int pair_idx = i - 1;
-                    int offset = (pair_idx / 2) * 8;
-                    instr |= ARM64_IMM7(offset >> 3);
-                    instr |= ARM64_RT2(reg2);
-                    instr |= ARM64_RN(reg1);
-                    instr |= ARM64_RD(31);
-                    emit_instr32(instr);
-                    i--;
+        if (saved_count > 0) {
+            for (i = stack_off = 0; i < saved_count; ) {
+                if (i + 1 < saved_count) {
+                    gen_ldst_pair(ARM64_LDP_X, saved_regs[i], saved_regs[i + 1],
+                                  TREG_SP, stack_off, 3);
+                    stack_off += 16;
+                    i += 2;
                 } else {
-                    uint32_t instr = ARM64_LDR_X;
-                    int offset = i * 8;
-                    instr |= ARM64_IMM12(offset >> 3);
-                    instr |= ARM64_RN(reg1);
-                    instr |= ARM64_RT(31);
-                    emit_instr32(instr);
+                    gen_ldst_imm(ARM64_LDR_X, saved_regs[i], TREG_SP,
+                                 stack_off, 3);
+                    i++;
                 }
             }
-        }
-
-        for (i = 0; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i++) {
-            reg = reg_saved[i];
-            if (regs_allocated[reg]) {
-                gen_add_imm(31, 31, 16, 1, 0);
-                break;
-            }
+            gen_add_imm(31, 31, stack_size, 1, 0);
         }
     }
 }
@@ -1839,14 +2031,15 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
             }
             goto try_next;
         case 'w':
-            for (reg = 0; reg < 31; reg++) {
+        case 'f':
+            for (reg = ARM64_FREG_BASE; reg <= ARM64_FREG_LAST; reg++) {
                 if (!is_reg_allocated(reg))
                     goto reg_found;
             }
             goto try_next;
-        case 'f':
         case 'x':
-            for (reg = 32; reg < 64; reg++) {
+        case 'y':
+            for (reg = ARM64_FREG_BASE; reg <= ARM64_FREG_LAST; reg++) {
                 if (!is_reg_allocated(reg))
                     goto reg_found;
             }
@@ -1854,18 +2047,28 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
         case 'm':
         case 'g':
             if (j < nb_outputs || c == 'm') {
-                if ((op->vt->r & VT_VALMASK) == VT_LLOCAL) {
-                    for (reg = 0; reg < 31; reg++) {
-                        if (!(regs_allocated[reg] & REG_IN_MASK))
-                            goto reg_found1;
-                    }
+                if (!arm64_prepare_memory_operand(op, regs_allocated))
                     goto try_next;
-                reg_found1:
-                    regs_allocated[reg] |= REG_IN_MASK;
-                    op->reg = reg;
-                    op->is_memory = 1;
-                }
             }
+            break;
+        case 'Q':
+            if (!arm64_memory_is_base_only(op->vt))
+                goto try_next;
+            if (!arm64_prepare_memory_operand(op, regs_allocated))
+                goto try_next;
+            break;
+        case 'S':
+            if ((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) != (VT_CONST | VT_SYM))
+                goto try_next;
+            break;
+        case 'U':
+            if (str[0] != 'm' || str[1] != 'p')
+                goto try_next;
+            str += 2;
+            if (!arm64_memory_is_pair_suitable(op->vt))
+                goto try_next;
+            if (!arm64_prepare_memory_operand(op, regs_allocated))
+                goto try_next;
             break;
         case 'i':
             if (!((op->vt->r & (VT_VALMASK | VT_LVAL)) == VT_CONST))
@@ -1878,6 +2081,11 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
                 goto try_next;
             break;
         case 'J':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
+            if (!is_valid_add_imm(-op->vt->c.i))
+                goto try_next;
+            break;
         case 'K':
             if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
                 goto try_next;
@@ -1887,7 +2095,20 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
         case 'L':
             if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
                 goto try_next;
+            if (!is_valid_logical_imm(op->vt->c.i, 64))
+                goto try_next;
+            break;
+        case 'M':
+        case 'N':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
             if (!is_valid_movw_imm(op->vt->c.i))
+                goto try_next;
+            break;
+        case 'Z':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
+            if (op->vt->c.i != 0)
                 goto try_next;
             break;
         case 'n':
@@ -1920,7 +2141,7 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
         if (op->reg >= 0 &&
             (op->vt->r & VT_VALMASK) == VT_LLOCAL &&
             !op->is_memory) {
-            for (reg = 0; reg < NB_ASM_REGS; reg++) {
+            for (reg = 0; reg < 31; reg++) {
                 if (!(regs_allocated[reg] & REG_OUT_MASK))
                     goto reg_found2;
             }
