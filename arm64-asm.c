@@ -36,22 +36,15 @@ ST_FUNC void gen_le32(int c);
 /* Operand types */
 enum {
     OPT_REG,
-    OPT_VREG,
     OPT_IM,
-    OPT_IM12,
     OPT_ADDR,
     OPT_COND,
-    OPT_SHIFT,
-    OPT_REGSET,
 };
 
 #define OP_REG     (1 << OPT_REG)
-#define OP_VREG    (1 << OPT_VREG)
 #define OP_IM      (1 << OPT_IM)
 #define OP_ADDR    (1 << OPT_ADDR)
 #define OP_COND    (1 << OPT_COND)
-#define OP_SHIFT   (1 << OPT_SHIFT)
-#define OP_REGSET  (1 << OPT_REGSET)
 
 typedef struct Operand {
     uint32_t type;
