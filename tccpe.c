@@ -40,7 +40,7 @@ static HMODULE pe_get_process_msvcrt_handle(void)
     wait_sem(&pe_msvcrt_sem);
     dll = handle;
     if (!dll) {
-        dll = LoadLibraryA("msvcrt.dll");
+        dll = GetModuleHandleA("msvcrt.dll");
         if (dll)
             handle = dll;
     }
