@@ -1520,6 +1520,20 @@ typedef DWORD LCID;
     DWORD Wcr[ARM64_MAX_WATCHPOINTS];
     DWORD64 Wvr[ARM64_MAX_WATCHPOINTS];
   } ARM64_NT_CONTEXT,*PARM64_NT_CONTEXT;
+
+  C_ASSERT(sizeof(ARM64_NT_CONTEXT) == 0x390);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, ContextFlags) == 0x000);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, X) == 0x008);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, Fp) == 0x0f0);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, Lr) == 0x0f8);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, Sp) == 0x100);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, Pc) == 0x108);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, V) == 0x110);
+  C_ASSERT(sizeof(((ARM64_NT_CONTEXT *)0)->V[0]) == 16);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, Fpcr) == 0x310);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, Fpsr) == 0x314);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, Bvr) == 0x338);
+  C_ASSERT(offsetof(ARM64_NT_CONTEXT, Wvr) == 0x380);
 #endif
 
   typedef ARM64_NT_CONTEXT CONTEXT,*PCONTEXT;
