@@ -18,3 +18,10 @@ Root Cause: `subst_asm_operand` printed constants through a 32-bit integer path 
 Solution: Print ARM64 substituted constants using full-width values, and fall back to hexadecimal text for unsigned-looking 64-bit values above `INT64_MAX`. That keeps logical-immediate parsing consistent with direct hex literals.
 Prevention: When adding ARM64 immediate constraints or tests, verify both direct literals and `%N` operand substitution paths. Large constants can pass parser/codegen tests in one path and fail in the other if operand formatting truncates or changes the bit pattern.
 Related Files: [arm64-asm.c, tests/asm/test-asm-arm64-ext.c]
+
+Date: 2026-03-21
+Problem: `make test` failed even though `make tcc` and the targeted ARM64 asm tests passed.
+Root Cause: A new helper in `arm64-asm.c` reused the name `arm64_encode_bimm64`, which already exists as a `static` helper in `arm64-gen.c`. Normal object builds keep those in separate translation units, but the test suite also compiles `tcc.c` in one-source mode, so both helpers ended up in the same translation unit and collided.
+Solution: Rename ARM64 inline-asm-only helpers so they cannot collide with backend helpers in one-source builds.
+Prevention: After adding new `static` helpers in target files, run `make test`, not just `make tcc`. This project still exercises one-source builds that expose cross-file static-name collisions.
+Related Files: [arm64-asm.c, arm64-gen.c, Makefile, tests/Makefile]
