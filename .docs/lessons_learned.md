@@ -11,3 +11,10 @@ Root Cause: Two tests used generic `%0`/`%1` register substitution for `ldr`/`st
 Solution: Update the tests to use `%w0`/`%w1` for 32-bit load/store instructions so the emitted code uses `ldr wN`/`str wN` and does not trample the stack frame.
 Prevention: For AArch64 inline asm tests, always spell the width explicitly on load/store operands when the C type is narrower than 64 bits. Generic `%0` with an `"r"` constraint is not enough to force a W register.
 Related Files: [tests/asm/test-asm-arm64-ext.c, tests/asm/test-asm-arm64-ext-fixed.c]
+
+Date: 2026-03-21
+Problem: AArch64 `L` logical-immediate tests passed with literal hex immediates but failed when the same value came through extended-asm operand substitution.
+Root Cause: `subst_asm_operand` printed constants through a 32-bit integer path originally, then through signed decimal only. Large 64-bit immediates with the top bit set need their full bit pattern preserved when substituted into inline asm templates.
+Solution: Print ARM64 substituted constants using full-width values, and fall back to hexadecimal text for unsigned-looking 64-bit values above `INT64_MAX`. That keeps logical-immediate parsing consistent with direct hex literals.
+Prevention: When adding ARM64 immediate constraints or tests, verify both direct literals and `%N` operand substitution paths. Large constants can pass parser/codegen tests in one path and fail in the other if operand formatting truncates or changes the bit pattern.
+Related Files: [arm64-asm.c, tests/asm/test-asm-arm64-ext.c]
