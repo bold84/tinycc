@@ -1090,6 +1090,35 @@ static void asm_sysreg(TCCState *s1, int token)
     gen_msr(op.reg, sysreg);
 }
 
+/* Get condition code from branch instruction token */
+static int get_branch_condition(int branch_token)
+{
+    int cond_token;
+    
+    /* Map branch token to condition token (strip 'b' prefix) */
+    switch (branch_token) {
+        case TOK_ASM_beq: cond_token = TOK_ASM_eq; break;
+        case TOK_ASM_bne: cond_token = TOK_ASM_ne; break;
+        case TOK_ASM_bcs:
+        case TOK_ASM_bhs: cond_token = TOK_ASM_cs; break;
+        case TOK_ASM_bcc:
+        case TOK_ASM_blo: cond_token = TOK_ASM_cc; break;
+        case TOK_ASM_bmi: cond_token = TOK_ASM_mi; break;
+        case TOK_ASM_bpl: cond_token = TOK_ASM_pl; break;
+        case TOK_ASM_bvs: cond_token = TOK_ASM_vs; break;
+        case TOK_ASM_bvc: cond_token = TOK_ASM_vc; break;
+        case TOK_ASM_bhi: cond_token = TOK_ASM_hi; break;
+        case TOK_ASM_bls: cond_token = TOK_ASM_ls; break;
+        case TOK_ASM_bge: cond_token = TOK_ASM_ge; break;
+        case TOK_ASM_blt: cond_token = TOK_ASM_lt; break;
+        case TOK_ASM_bgt: cond_token = TOK_ASM_gt; break;
+        case TOK_ASM_ble: cond_token = TOK_ASM_le; break;
+        default: return -1;
+    }
+    
+    return parse_condition(cond_token);
+}
+
 /* Handle branch instructions */
 static void asm_branch(TCCState *s1, int token)
 {
@@ -1112,27 +1141,7 @@ static void asm_branch(TCCState *s1, int token)
             /* Symbolic address - emit relocation */
             offset = 0;
 
-            /* Check for conditional branch */
-            cond = -1;
-            switch (token) {
-                case TOK_ASM_beq: cond = 0; break;
-                case TOK_ASM_bne: cond = 1; break;
-                case TOK_ASM_bcs:
-                case TOK_ASM_bhs: cond = 2; break;
-                case TOK_ASM_bcc:
-                case TOK_ASM_blo: cond = 3; break;
-                case TOK_ASM_bmi: cond = 4; break;
-                case TOK_ASM_bpl: cond = 5; break;
-                case TOK_ASM_bvs: cond = 6; break;
-                case TOK_ASM_bvc: cond = 7; break;
-                case TOK_ASM_bhi: cond = 8; break;
-                case TOK_ASM_bls: cond = 9; break;
-                case TOK_ASM_bge: cond = 10; break;
-                case TOK_ASM_blt: cond = 11; break;
-                case TOK_ASM_bgt: cond = 12; break;
-                case TOK_ASM_ble: cond = 13; break;
-            }
-
+            cond = get_branch_condition(token);
             if (cond >= 0) {
                 /* Conditional branch - use CONDBR19 relocation */
                 gen_b_cond(cond, 0);
@@ -1154,27 +1163,7 @@ static void asm_branch(TCCState *s1, int token)
         } else {
             offset = (int32_t)op.e.v - ind;
 
-            /* Check for conditional branch */
-            cond = -1;
-            switch (token) {
-                case TOK_ASM_beq: cond = 0; break;
-                case TOK_ASM_bne: cond = 1; break;
-                case TOK_ASM_bcs:
-                case TOK_ASM_bhs: cond = 2; break;
-                case TOK_ASM_bcc:
-                case TOK_ASM_blo: cond = 3; break;
-                case TOK_ASM_bmi: cond = 4; break;
-                case TOK_ASM_bpl: cond = 5; break;
-                case TOK_ASM_bvs: cond = 6; break;
-                case TOK_ASM_bvc: cond = 7; break;
-                case TOK_ASM_bhi: cond = 8; break;
-                case TOK_ASM_bls: cond = 9; break;
-                case TOK_ASM_bge: cond = 10; break;
-                case TOK_ASM_blt: cond = 11; break;
-                case TOK_ASM_bgt: cond = 12; break;
-                case TOK_ASM_ble: cond = 13; break;
-            }
-
+            cond = get_branch_condition(token);
             if (cond >= 0) {
                 gen_b_cond(cond, offset);
             } else {
