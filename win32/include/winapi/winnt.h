@@ -2117,9 +2117,9 @@ typedef DWORD LCID;
       DWORD Fpcr;
       DWORD Fpsr;
       DWORD Bcr[8];
-      DWORD Bvr[8];
+      DWORD64 Bvr[8];
       DWORD Wcr[2];
-      DWORD Wvr[2];
+      DWORD64 Wvr[2];
     } CONTEXT,*PCONTEXT;
 #endif
 
