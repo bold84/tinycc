@@ -331,14 +331,14 @@ static void arm64_ldrx(int sg, int sz_, int dst, int bas, uint64_t off)
     if (sz >= 2)
         sg = 0;
     if (!(off & ~scaled_mask))
-        o(0x39400000 | dst | bas << 5 | off << (10 - sz) |
+        o(ARM64_LDR_B | dst | bas << 5 | off << (10 - sz) |
           (uint32_t)!!sg << 23 | sz << 30); // ldr(*) x(dst),[x(bas),#(off)]
     else if (off < 256 || -off <= 256)
-        o(0x38400000 | dst | bas << 5 | (off & 511) << 12 |
+        o(ARM64_LDUR_B | dst | bas << 5 | (off & 511) << 12 |
           (uint32_t)!!sg << 23 | sz << 30); // ldur(*) x(dst),[x(bas),#(off)]
     else {
         arm64_movimm(30, off); // use x30 for offset
-        o(0x38206800 | dst | bas << 5 | (uint32_t)30 << 16 |
+        o(ARM64_LDR_B_REG | dst | bas << 5 | (uint32_t)30 << 16 |
           (uint32_t)(!!sg + 1) << 22 | sz << 30); // ldr(*) x(dst),[x(bas),x30]
     }
 }
