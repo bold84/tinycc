@@ -703,3 +703,17 @@
 #define ARM64_ISB_OPTION(opt) (((uint32_t)(opt) & 0xFU) << 8)
 #define ARM64_DSB_OPTION(opt) (((uint32_t)(opt) & 0xFU) << 8)
 #define ARM64_DMB_OPTION(opt) (((uint32_t)(opt) & 0xFU) << 8)
+
+/* Additional opcodes for code generator */
+#define ARM64_FMOV_S_D    0x4EA01C00U
+#define ARM64_FMOV_D_S    0x1E604000U
+#define ARM64_FMOV_X_D    0x9E660000U
+#define ARM64_FMOV_W_S    0x1E260000U
+#define ARM64_STR_Q_PRE   0x3C9F0FE0U
+#define ARM64_LDR_Q_POST  0x3CC107E0U
+#define ARM64_LDPSW       0x4C402BDCU
+#define ARM64_LDR_S_SIMD  0x0D00801CU  /* SIMD load (different from ARM64_LDR_S) */
+#define ARM64_MOV_V_D     0x4E083C00U
+#define ARM64_FCMP        0x1E202008U
+#define ARM64_SDIV        0x1AC00C00U
+#define ARM64_MUL         0x1B007C00U
