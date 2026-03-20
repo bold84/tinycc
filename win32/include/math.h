@@ -231,8 +231,8 @@ extern "C" {
 
   /*
   We can't __CRT_INLINE float or double, because we want to ensure truncation
-  to semantic type before classification. 
-  (A normal long double value might become subnormal when 
+  to semantic type before classification.
+  (A normal long double value might become subnormal when
   converted to double, and zero when converted to float.)
   */
 
@@ -310,7 +310,7 @@ extern "C" {
   extern long double __cdecl scalblnl (long double, long);
 
   /* 7.12.7.1 */
-  /* Implementations adapted from Cephes versions */ 
+  /* Implementations adapted from Cephes versions */
   extern double __cdecl cbrt (double);
   extern float __cdecl cbrtf (float);
   extern long double __cdecl cbrtl (long double);
@@ -336,14 +336,14 @@ extern "C" {
   extern float __cdecl erff (float);
   /* TODO
   extern long double __cdecl erfl (long double);
-  */ 
+  */
 
   /* 7.12.8.2 The erfc functions  */
   extern double __cdecl erfc (double);
   extern float __cdecl erfcf (float);
   /* TODO
   extern long double __cdecl erfcl (long double);
-  */ 
+  */
 
   /* 7.12.8.3 The lgamma functions */
   extern double __cdecl lgamma (double);
@@ -412,7 +412,7 @@ extern "C" {
 
   extern long double __cdecl fmodl (long double, long double);
 
-  /* 7.12.10.2 */ 
+  /* 7.12.10.2 */
   extern double __cdecl remainder (double, double);
   extern float __cdecl remainderf (float, float);
   extern long double __cdecl remainderl (long double, long double);
@@ -467,7 +467,7 @@ extern "C" {
   extern long double __cdecl fminl (long double, long double);
 
   /* 7.12.13.1 */
-  /* return x * y + z as a ternary op */ 
+  /* return x * y + z as a ternary op */
   extern double __cdecl fma (double, double, double);
   extern float __cdecl fmaf (float, float, float);
   extern long double __cdecl fmal (long double, long double, long double);
@@ -482,11 +482,11 @@ extern "C" {
 #pragma pack(pop)
 
 /* 7.12.14 */
-/* 
+/*
  *  With these functions, comparisons involving quiet NaNs set the FP
  *  condition code to "unordered".  The IEEE floating-point spec
  *  dictates that the result of floating-point comparisons should be
- *  false whenever a NaN is involved, with the exception of the != op, 
+ *  false whenever a NaN is involved, with the exception of the != op,
  *  which always returns true: yes, (NaN != NaN) is true).
  */
 

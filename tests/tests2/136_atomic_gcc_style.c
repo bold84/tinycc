@@ -20,7 +20,7 @@ int main() {
         int atomic_var = 100;
         int expected = 100;
         bool success = __atomic_compare_exchange_n(
-            &atomic_var, &expected, 200, 
+            &atomic_var, &expected, 200,
             false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST
         );
         assert(success);

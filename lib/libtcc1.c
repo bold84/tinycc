@@ -1,5 +1,5 @@
-/* TCC runtime library. 
-   Parts of this code are (c) 2002 Fabrice Bellard 
+/* TCC runtime library.
+   Parts of this code are (c) 2002 Fabrice Bellard
 
    Copyright (C) 1987, 1988, 1992, 1994, 1995 Free Software Foundation, Inc.
 
@@ -25,7 +25,7 @@ General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; see the file COPYING.  If not, write to
 the Free Software Foundation, 59 Temple Place - Suite 330,
-Boston, MA 02111-1307, USA.  
+Boston, MA 02111-1307, USA.
 */
 
 #define W_TYPE_SIZE   32
@@ -368,10 +368,10 @@ long long __divdi3(long long u, long long v)
     int c = 0;
     DWunion uu, vv;
     DWtype w;
-    
+
     uu.ll = u;
     vv.ll = v;
-    
+
     if (uu.s.high < 0) {
         c = ~c;
         uu.ll = __negdi2 (uu.ll);
@@ -391,17 +391,17 @@ long long __moddi3(long long u, long long v)
     int c = 0;
     DWunion uu, vv;
     DWtype w;
-    
+
     uu.ll = u;
     vv.ll = v;
-    
+
     if (uu.s.high < 0) {
         c = ~c;
         uu.ll = __negdi2 (uu.ll);
     }
     if (vv.s.high < 0)
         vv.ll = __negdi2 (vv.ll);
-    
+
     __udivmoddi4 (uu.ll, vv.ll, (UDWtype *) &w);
     if (c)
         w = __negdi2 (w);
@@ -416,7 +416,7 @@ unsigned long long __udivdi3(unsigned long long u, unsigned long long v)
 unsigned long long __umoddi3(unsigned long long u, unsigned long long v)
 {
     UDWtype w;
-    
+
     __udivmoddi4 (u, v, &w);
     return w;
 }
@@ -483,7 +483,7 @@ long long __ashldi3(long long a, int b)
 /* XXX: fix tcc's code generator to do this instead */
 float __floatundisf(unsigned long long a)
 {
-    DWunion uu; 
+    DWunion uu;
     XFtype r;
 
     uu.ll = a;
@@ -498,7 +498,7 @@ float __floatundisf(unsigned long long a)
 
 double __floatundidf(unsigned long long a)
 {
-    DWunion uu; 
+    DWunion uu;
     XFtype r;
 
     uu.ll = a;
@@ -513,7 +513,7 @@ double __floatundidf(unsigned long long a)
 
 long double __floatundixf(unsigned long long a)
 {
-    DWunion uu; 
+    DWunion uu;
     XFtype r;
 
     uu.ll = a;

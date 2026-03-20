@@ -1,6 +1,6 @@
 /*
  *  GAS like assembler for TCC
- * 
+ *
  *  Copyright (c) 2001-2004 Fabrice Bellard
  *
  * This library is free software; you can redistribute it and/or
@@ -220,7 +220,7 @@ static void asm_expr_unary(TCCState *s1, ExprValue *pe)
         break;
     }
 }
-    
+
 static void asm_expr_prod(TCCState *s1, ExprValue *pe)
 {
     int op;
@@ -229,7 +229,7 @@ static void asm_expr_prod(TCCState *s1, ExprValue *pe)
     asm_expr_unary(s1, pe);
     for(;;) {
         op = tok;
-        if (op != '*' && op != '/' && op != '%' && 
+        if (op != '*' && op != '/' && op != '%' &&
             op != TOK_SHL && op != TOK_SAR)
             break;
         next();
@@ -240,14 +240,14 @@ static void asm_expr_prod(TCCState *s1, ExprValue *pe)
         case '*':
             pe->v *= e2.v;
             break;
-        case '/':  
+        case '/':
             if (e2.v == 0) {
             div_error:
                 tcc_error("division by zero");
             }
             pe->v /= e2.v;
             break;
-        case '%':  
+        case '%':
             if (e2.v == 0)
                 goto div_error;
             pe->v %= e2.v;
@@ -281,7 +281,7 @@ static void asm_expr_logic(TCCState *s1, ExprValue *pe)
         case '&':
             pe->v &= e2.v;
             break;
-        case '|':  
+        case '|':
             pe->v |= e2.v;
             break;
         default:
@@ -316,7 +316,7 @@ static inline void asm_expr_sum(TCCState *s1, ExprValue *pe)
                because we store only one symbol in the expression */
 	    if (!e2.sym) {
 		/* OK */
-	    } else if (pe->sym == e2.sym) { 
+	    } else if (pe->sym == e2.sym) {
 		/* OK */
 		pe->sym = NULL; /* same symbols can be subtracted to NULL */
 	    } else {
@@ -713,7 +713,7 @@ static void asm_parse_directive(TCCState *s1, int global)
     case TOK_ASMDIR_weak:
     case TOK_ASMDIR_hidden:
 	tok1 = tok;
-	do { 
+	do {
             Sym *sym;
             next();
 	    if (tok < TOK_IDENT)
@@ -759,7 +759,7 @@ static void asm_parse_directive(TCCState *s1, int global)
     case TOK_ASMDIR_text:
     case TOK_ASMDIR_data:
     case TOK_ASMDIR_bss:
-	{ 
+	{
             char sname[64];
             tok1 = tok;
             n = 0;
@@ -810,7 +810,7 @@ static void asm_parse_directive(TCCState *s1, int global)
         }
         break;
     case TOK_ASMDIR_size:
-        { 
+        {
             Sym *sym;
 
             next();
@@ -829,7 +829,7 @@ static void asm_parse_directive(TCCState *s1, int global)
         }
         break;
     case TOK_ASMDIR_type:
-        { 
+        {
             Sym *sym;
             const char *newtype;
             int st_type;
@@ -924,7 +924,7 @@ static void asm_parse_directive(TCCState *s1, int global)
         }
         break;
     case TOK_ASMDIR_previous:
-        { 
+        {
             Section *sec;
             next();
             if (!last_text_section)
@@ -1120,7 +1120,7 @@ static void tcc_assemble_inline(TCCState *s1, const char *str, int len, int glob
 /* find a constraint by its number or id (gcc 3 extended
    syntax). return -1 if not found. Return in *pp in char after the
    constraint */
-ST_FUNC int find_constraint(ASMOperand *operands, int nb_operands, 
+ST_FUNC int find_constraint(ASMOperand *operands, int nb_operands,
                            const char *name, const char **pp)
 {
     int index;
@@ -1158,7 +1158,7 @@ ST_FUNC int find_constraint(ASMOperand *operands, int nb_operands,
     return index;
 }
 
-static void subst_asm_operands(ASMOperand *operands, int nb_operands, 
+static void subst_asm_operands(ASMOperand *operands, int nb_operands,
                                CString *out_str, const char *str)
 {
     int c, index, modifier;
@@ -1362,12 +1362,12 @@ ST_FUNC void asm_instr(void)
        token after the assembler parsing */
     if (tok != ';')
         expect("';'");
-    
+
     /* save all values in the memory */
     save_regs(0);
 
     /* compute constraints */
-    asm_compute_constraints(operands, nb_operands, nb_outputs, 
+    asm_compute_constraints(operands, nb_operands, nb_outputs,
                             clobber_regs, &out_reg);
 
     /* substitute the operands in the asm string. No substitution is
@@ -1387,8 +1387,8 @@ ST_FUNC void asm_instr(void)
 #endif
 
     /* generate loads */
-    asm_gen_code(operands, nb_operands, nb_outputs, 0, 
-                 clobber_regs, out_reg);    
+    asm_gen_code(operands, nb_operands, nb_outputs, 0,
+                 clobber_regs, out_reg);
 
     /* We don't allow switching section within inline asm to
        bleed out to surrounding code.  */
@@ -1405,9 +1405,9 @@ ST_FUNC void asm_instr(void)
     next();
 
     /* store the output values if needed */
-    asm_gen_code(operands, nb_operands, nb_outputs, 1, 
+    asm_gen_code(operands, nb_operands, nb_outputs, 1,
                  clobber_regs, out_reg);
-    
+
     /* free everything */
     for(i=0;i<nb_operands;i++) {
         vpop();
@@ -1429,7 +1429,7 @@ ST_FUNC void asm_global_instr(void)
        token after the assembler parsing */
     if (tok != ';')
         expect("';'");
-    
+
 #ifdef ASM_DEBUG
     printf("asm_global: \"%s\"\n", (char *)astr->data);
 #endif
@@ -1438,7 +1438,7 @@ ST_FUNC void asm_global_instr(void)
 
     /* assemble the string with tcc internal assembler */
     tcc_assemble_inline(tcc_state, astr->data, astr->size - 1, 1);
-    
+
     cur_text_section->data_offset = ind;
 
     /* restore the current C token */

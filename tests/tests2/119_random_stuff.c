@@ -7,13 +7,13 @@ static const char str[] = "abcdefghijklmnopqrstuvwxyz";
 void tst_branch(void)
 {
   printf("tst_branch --");
-  goto *&&a; 
+  goto *&&a;
   printf (" dummy");
 a: ;
   printf(" --\n");
 }
 
-void tst_void_ptr(void *pv, int i) 
+void tst_void_ptr(void *pv, int i)
 {
   i ? *pv : *pv; // dr106
 }

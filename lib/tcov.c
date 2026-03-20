@@ -61,7 +61,7 @@ static FILE *open_tcov_file (char *cov_filename)
     fd = open (cov_filename, O_RDWR | O_CREAT, 0666);
     if (fd < 0)
 	return NULL;
-  
+
 #ifndef _WIN32
     while (fcntl (fd, F_SETLKW, &lock) && errno == EINTR)
         continue;
@@ -221,13 +221,13 @@ static void merge_test_coverage (tcov_file *file, FILE *fp,
     unsigned int runs;
     char *p;
     char str[10000];
-    
+
     *pruns = 1;
     if (fp == NULL)
         return;
     if (fgets(str, sizeof(str), fp) &&
         (p = strrchr (str, ':')) &&
-        (sscanf (p + 1, "%u", &runs) == 1)) 
+        (sscanf (p + 1, "%u", &runs) == 1))
         *pruns = runs + 1;
     while (file) {
 	int i;
@@ -339,7 +339,7 @@ void __store_test_coverage (unsigned char * p)
 		 nfile->filename, funcs, 100.0 * (double) blocks_run / blocks);
         for (i = 0; i < nfile->n_func; i++) {
 	    func = &nfile->func[i];
-	
+
 	    while (curline < func->first_line &&
 		   fgets(str, sizeof(str), src))
 		fprintf (fp, "        -:%5u:%s", curline++, str);
@@ -399,7 +399,7 @@ void __store_test_coverage (unsigned char * p)
 		        fprintf (fp, "    #####:%5u:%s",
 				 curline, str);
 		    else if (has_zero)
-		        fprintf (fp, "%8llu*:%5u:%s", 
+		        fprintf (fp, "%8llu*:%5u:%s",
 				 count, curline, str);
 		    else
 		        fprintf (fp, "%9llu:%5u:%s",

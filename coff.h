@@ -31,9 +31,9 @@ struct filehdr {
 #define  F_LITTLE   0x100      /* byte ordering of an AR32WR (vax)         */
 #define  F_BIG      0x200      /* byte ordering of an AR32W (3B, maxi)     */
 #define  F_PATCH    0x400      /* contains "patch" list in optional header */
-#define  F_NODF     0x400   
+#define  F_NODF     0x400
 
-#define F_VERSION    (F_GSP10  | F_GSP20)   
+#define F_VERSION    (F_GSP10  | F_GSP20)
 #define F_BYTE_ORDER (F_LITTLE | F_BIG)
 #define FILHDR  struct filehdr
 
@@ -49,7 +49,7 @@ struct filehdr {
 #define ISARCHIVE(x)    ((((unsigned short)(x))==(unsigned short)ARTYPE))
 #define BADMAGIC(x)     (((unsigned short)(x) & 0x8080) && !ISMAGIC(x))
 
-
+
 /*------------------------------------------------------------------------*/
 /*  OPTIONAL FILE HEADER                                                  */
 /*------------------------------------------------------------------------*/
@@ -68,7 +68,7 @@ typedef struct aouthdr {
 
 /*----------------------------------------------------------------------*/
 /*      When a UNIX aout header is to be built in the optional header,  */
-/*      the following magic numbers can appear in that header:          */ 
+/*      the following magic numbers can appear in that header:          */
 /*                                                                      */
 /*              AOUT1MAGIC : default : readonly sharable text segment   */
 /*              AOUT2MAGIC:          : writable text segment            */
@@ -78,7 +78,7 @@ typedef struct aouthdr {
 #define AOUT2MAGIC 0407
 #define PAGEMAGIC  0413
 
-
+
 /*------------------------------------------------------------------------*/
 /*  COMMON ARCHIVE FILE STRUCTURES                                        */
 /*                                                                        */
@@ -125,7 +125,7 @@ struct ar_hdr           /* archive file member header - printable ascii */
         char    ar_fmag[2];     /* ARFMAG - string to end header */
 };
 
-
+
 /*------------------------------------------------------------------------*/
 /*  SECTION HEADER                                                        */
 /*------------------------------------------------------------------------*/
@@ -164,7 +164,7 @@ struct scnhdr {
 #define STYP_NOLOAD 0x02  /* "noload"  : allocated, relocated, not loaded */
 #define STYP_GROUP  0x04  /* "grouped" : formed of input sections */
 #define STYP_PAD    0x08  /* "padding" : not allocated, not relocated, loaded */
-#define STYP_COPY   0x10  /* "copy"    : used for C init tables - 
+#define STYP_COPY   0x10  /* "copy"    : used for C init tables -
                                                 not allocated, relocated,
                                                 loaded;  reloc & lineno
                                                 entries processed normally */
@@ -176,7 +176,7 @@ struct scnhdr {
 #define ALIGN_MASK  0x0F00 /* part of s_flags that is used for align vals */
 #define ALIGNSIZE(x) (1 << ((x & ALIGN_MASK) >> 8))
 
-
+
 /*------------------------------------------------------------------------*/
 /*  RELOCATION ENTRIES                                                    */
 /*------------------------------------------------------------------------*/
@@ -216,7 +216,7 @@ struct reloc
 #define R_PARTMS9      051        /* DSP: 9 bit page of 16 bit address      */
 #define R_REL13        052        /* DSP: 13 bits, direct                   */
 
-
+
 /*------------------------------------------------------------------------*/
 /*  LINE NUMBER ENTRIES                                                   */
 /*------------------------------------------------------------------------*/
@@ -234,7 +234,7 @@ struct lineno
 #define LINENO  struct lineno
 #define LINESZ  6       /* sizeof(LINENO) */
 
-
+
 /*------------------------------------------------------------------------*/
 /*   STORAGE CLASSES                                                      */
 /*------------------------------------------------------------------------*/
@@ -267,7 +267,7 @@ struct lineno
 #define  C_ALIAS         105   /* duplicate tag */
 #define  C_HIDDEN        106   /* special storage class for external */
                                /* symbols in dmert public libraries  */
-
+
 /*------------------------------------------------------------------------*/
 /*  SYMBOL TABLE ENTRIES                                                  */
 /*------------------------------------------------------------------------*/
@@ -312,7 +312,7 @@ struct syment
 #define  N_TV     (unsigned short)-3    /* needs transfer vector (preload) */
 #define  P_TV     (unsigned short)-4    /* needs transfer vector (postload) */
 
-
+
 /*------------------------------------------------------------------------*/
 /* The fundamental type of a symbol packed into the low                   */
 /* 4 bits of the word.                                                    */
@@ -358,11 +358,11 @@ struct syment
 #define  N_BTSHFT_COFF     4
 #define  N_TSHIFT_COFF     2
 
-#define  BTYPE_COFF(x)  ((x) & N_BTMASK_COFF)  
+#define  BTYPE_COFF(x)  ((x) & N_BTMASK_COFF)
 #define  ISINT(x)  (((x) >= T_CHAR && (x) <= T_LONG) ||   \
 		    ((x) >= T_UCHAR && (x) <= T_ULONG) || (x) == T_ENUM)
 #define  ISFLT_COFF(x)  ((x) == T_DOUBLE || (x) == T_FLOAT)
-#define  ISPTR_COFF(x)  (((x) & N_TMASK_COFF) == (DT_PTR << N_BTSHFT_COFF)) 
+#define  ISPTR_COFF(x)  (((x) & N_TMASK_COFF) == (DT_PTR << N_BTSHFT_COFF))
 #define  ISFCN_COFF(x)  (((x) & N_TMASK_COFF) == (DT_FCN << N_BTSHFT_COFF))
 #define  ISARY_COFF(x)  (((x) & N_TMASK_COFF) == (DT_ARY << N_BTSHFT_COFF))
 #define  ISTAG_COFF(x)  ((x)==C_STRTAG || (x)==C_UNTAG || (x)==C_ENTAG)
@@ -370,7 +370,7 @@ struct syment
 #define  INCREF_COFF(x) ((((x)&~N_BTMASK_COFF)<<N_TSHIFT_COFF)|(DT_PTR<<N_BTSHFT_COFF)|(x&N_BTMASK_COFF))
 #define  DECREF_COFF(x) ((((x)>>N_TSHIFT_COFF)&~N_BTMASK_COFF)|((x)&N_BTMASK_COFF))
 
-
+
 /*------------------------------------------------------------------------*/
 /*  AUXILIARY SYMBOL ENTRY                                                */
 /*------------------------------------------------------------------------*/

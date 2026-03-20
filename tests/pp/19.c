@@ -77,8 +77,8 @@
    as funclike macro invocation of KO.  E.g. X93 and X94 expand to 'KO',
    but X95 must not consume the (a,b) arguments outside the M_IF()
    invocation to reduce the 'KO' macro to an invocation.  Instead
-   X95 should reduce via M_IF(KO)(a,b) to 'a'. 
-   
+   X95 should reduce via M_IF(KO)(a,b) to 'a'.
+
    The other lines here are variations on this scheme, with X1 to
    X6 coming from the bug report at
    http://lists.nongnu.org/archive/html/tinycc-devel/2017-07/msg00017.html */

@@ -701,7 +701,7 @@ static void gen_bounds_epilog(void)
     bounds_ptr = section_ptr_add(lbounds_section, sizeof(addr_t));
     *bounds_ptr = 0;
 
-    sym_data = get_sym_ref(&char_pointer_type, lbounds_section, 
+    sym_data = get_sym_ref(&char_pointer_type, lbounds_section,
                            func_bound_offset, PTR_SIZE);
 
     /* generate bound local allocation */
@@ -826,7 +826,7 @@ void gfunc_call(int nb_args)
     struct_size = args_size;
     for(i = 0; i < nb_args; i++) {
         SValue *sv;
-        
+
         --arg;
         sv = &vtop[-i];
         bt = (sv->type.t & VT_BTYPE);
@@ -901,7 +901,7 @@ void gfunc_call(int nb_args)
                     vtop->type.t = size > 4 ? VT_LLONG : size > 2 ? VT_INT
                         : size > 1 ? VT_SHORT : VT_BYTE;
                 }
-                
+
                 r = gv(RC_INT);
                 if (arg >= REGN) {
                     gen_offs_sp(0x89, r, arg*8);
@@ -922,7 +922,7 @@ void gfunc_call(int nb_args)
             o(0xda894c); /* mov %r11, %rdx */
         }
     }
-    
+
     gcall_or_jmp(0);
 
     if ((vtop->r & VT_SYM) && vtop->sym->v == TOK_alloca) {
@@ -1097,10 +1097,10 @@ static X86_64_Mode classify_x86_64_inner(CType *ty)
 {
     X86_64_Mode mode;
     Sym *f;
-    
+
     switch (ty->t & VT_BTYPE) {
     case VT_VOID: return x86_64_mode_none;
-    
+
     case VT_INT:
     case VT_BYTE:
     case VT_SHORT:
@@ -1109,19 +1109,19 @@ static X86_64_Mode classify_x86_64_inner(CType *ty)
     case VT_PTR:
     case VT_FUNC:
         return x86_64_mode_integer;
-    
+
     case VT_FLOAT:
     case VT_DOUBLE: return x86_64_mode_sse;
-    
+
     case VT_LDOUBLE: return x86_64_mode_x87;
-      
+
     case VT_STRUCT:
         f = ty->ref;
 
         mode = x86_64_mode_none;
         for (f = f->next; f; f = f->next)
             mode = classify_x86_64_merge(mode, classify_x86_64_inner(&f->type));
-        
+
         return mode;
     }
     assert(0);
@@ -1132,7 +1132,7 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
 {
     X86_64_Mode mode;
     int size, align, ret_t = 0;
-    
+
     if (ty->t & (VT_BITFIELD|VT_ARRAY)) {
         *psize = 8;
         *palign = 8;
@@ -1168,7 +1168,7 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
                         ret_t |= VT_UNSIGNED;
                 }
                 break;
-                
+
             case x86_64_mode_x87:
                 *reg_count = 1;
                 ret_t = VT_LDOUBLE;
@@ -1187,12 +1187,12 @@ static X86_64_Mode classify_x86_64_arg(CType *ty, CType *ret, int *psize, int *p
             }
         }
     }
-    
+
     if (ret) {
         ret->ref = NULL;
         ret->t = ret_t;
     }
-    
+
     return mode;
 }
 
@@ -1477,13 +1477,13 @@ void gfunc_prolog(Sym *func_sym)
             stack_arg:
                 seen_stack_size = ((seen_stack_size + align - 1) & -align) + size;
                 break;
-                
+
             case x86_64_mode_integer:
                 if (seen_reg_num + reg_count > REGN)
 		    goto stack_arg;
 		seen_reg_num += reg_count;
                 break;
-                
+
             case x86_64_mode_sse:
                 if (seen_sse_num + reg_count > 8)
 		    goto stack_arg;
@@ -1561,14 +1561,14 @@ void gfunc_prolog(Sym *func_sym)
                 addr += size;
             }
             break;
-            
+
         case x86_64_mode_memory:
         case x86_64_mode_x87:
             addr = (addr + align - 1) & -align;
             param_addr = addr;
             addr += size;
             break;
-            
+
         case x86_64_mode_integer: {
             if (reg_param_index + reg_count <= REGN) {
                 /* save arguments passed by register */
@@ -1962,7 +1962,7 @@ void gen_opf(int op)
                 vswap();
             }
             assert(!(vtop[-1].r & VT_LVAL));
-            
+
             if ((vtop->type.t & VT_BTYPE) == VT_DOUBLE)
                 o(0x66);
             if (op == TOK_EQ || op == TOK_NE)
@@ -1999,7 +1999,7 @@ void gen_opf(int op)
             ft = vtop->type.t;
             fc = vtop->c.i;
             assert((ft & VT_BTYPE) != VT_LDOUBLE);
-            
+
             r = vtop->r;
             /* if saved lvalue, then we must reload it */
             if ((vtop->r & VT_VALMASK) == VT_LLOCAL) {
@@ -2013,7 +2013,7 @@ void gen_opf(int op)
                 fc = 0;
                 vtop->r = r = r | VT_LVAL;
             }
-            
+
             assert(!(vtop[-1].r & VT_LVAL));
             if (swapped) {
                 assert(vtop->r & VT_LVAL);
@@ -2022,7 +2022,7 @@ void gen_opf(int op)
                 fc = vtop->c.i; /* bcheck may have saved previous vtop[-1] */
                 r = vtop->r;
             }
-            
+
             if ((ft & VT_BTYPE) == VT_DOUBLE) {
                 o(0xf2);
             } else {
@@ -2030,7 +2030,7 @@ void gen_opf(int op)
             }
             o(0x0f);
             o(0x58 + a);
-            
+
             if (vtop->r & VT_LVAL) {
                 gen_modrm(vtop[-1].r, r, vtop->sym, fc);
             } else {
@@ -2093,7 +2093,7 @@ void gen_cvt_ftof(int t)
     ft = vtop->type.t;
     bt = ft & VT_BTYPE;
     tbt = t & VT_BTYPE;
-    
+
     if (bt == VT_FLOAT) {
         gv(RC_FLOAT);
         if (tbt == VT_DOUBLE) {

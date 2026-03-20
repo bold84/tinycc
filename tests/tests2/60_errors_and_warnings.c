@@ -132,10 +132,10 @@ void f() { _Generic((int (*(*)(float,char))(double,int)){0}, int:0); }
 #elif defined test_array_to_str
 void f() { _Generic((int(*)[3]){0}, int:0); }
 #elif defined test_duplicate_def_1
-static enum myenum { L = -1 } L;                                                
+static enum myenum { L = -1 } L;
 #elif defined test_duplicate_def_2
 void foo(void) {
-static enum myenum { L = -1 } L;                                                
+static enum myenum { L = -1 } L;
 }
 #elif defined test_abstract_decls
 int bar(const char *());     // abstract declarator here is okay

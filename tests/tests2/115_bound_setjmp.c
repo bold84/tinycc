@@ -87,11 +87,11 @@ static void stack (void)
         else if (g_counter == 5)
             longjmp (buf1, 101);
         else {
-            setjmp (buf2); 
+            setjmp (buf2);
             longjmp (buf1, 101);
         }
     }
-    
+
     way_point1--;
 
     if (counter == 0) {

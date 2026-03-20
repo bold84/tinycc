@@ -450,19 +450,19 @@ struct macho {
     Section *stub_helper, *la_symbol_ptr;
     struct dyld_info_command *dyldinfo;
     int helpsym, lasym, dyld_private, dyld_stub_binder;
-    int n_lazy_bind;    
+    int n_lazy_bind;
     struct s_lazy_bind {
         int section;
         int bind_offset;
         int la_symbol_offset;
         ElfW_Rel rel;
     } *s_lazy_bind;
-    int n_rebase;    
+    int n_rebase;
     struct s_rebase {
         int section;
         ElfW_Rel rel;
     } *s_rebase;
-    int n_bind; 
+    int n_bind;
     struct bind {
         int section;
         ElfW_Rel rel;
@@ -565,7 +565,7 @@ static void tcc_macho_add_destructor(TCCState *s1)
 				    text_section->sh_num, "__mh_execute_header");
     s = find_section(s1, ".fini_array");
     if (s->data_offset == 0)
-        return; 
+        return;
     init_sym = put_elf_sym(s1->symtab, text_section->data_offset, 0,
                            ELFW(ST_INFO)(STB_LOCAL, STT_FUNC), 0,
                            text_section->sh_num, "___GLOBAL_init_65535");
@@ -585,7 +585,7 @@ static void tcc_macho_add_destructor(TCCState *s1)
         ptr[0] = 0x48;  // lea destructor(%rip),%rax
         ptr[1] = 0x8d;
         ptr[2] = 0x05;
-        put_elf_reloca(s1->symtab, text_section, 
+        put_elf_reloca(s1->symtab, text_section,
 		       text_section->data_offset - 23,
 		       R_X86_64_PC32, sym_index, -4);
         ptr[7] = 0x48;  // mov %rax,%rdi
@@ -617,7 +617,7 @@ static void tcc_macho_add_destructor(TCCState *s1)
         int sym_index = ELFW(R_SYM)(rel->r_info);
 
         ptr = section_ptr_add(text_section, 24);
-        put_elf_reloc(s1->symtab, text_section, 
+        put_elf_reloc(s1->symtab, text_section,
 		      text_section->data_offset - 24,
 		      R_AARCH64_ADR_PREL_PG_HI21, sym_index);
         write32le(ptr, 0x90000000);      // adrp x0, destructor@page
@@ -626,7 +626,7 @@ static void tcc_macho_add_destructor(TCCState *s1)
 		      R_AARCH64_LDST8_ABS_LO12_NC, sym_index);
         write32le(ptr + 4, 0x91000000);  // add x0,x0,destructor@pageoff
         write32le(ptr + 8, 0xd2800001);  // mov x1, #0
-        put_elf_reloc(s1->symtab, text_section, 
+        put_elf_reloc(s1->symtab, text_section,
 		      text_section->data_offset - 12,
 		      R_AARCH64_ADR_PREL_PG_HI21, mh_execute_header);
         write32le(ptr + 12, 0x90000002);      // adrp x2, mh_execute_header@page
@@ -828,7 +828,7 @@ static void check_relocs(TCCState *s1, struct macho *mo)
     write32le(jmp + 16, 0xf9400210); // ldr x16,[x16,dyld_stub_binder@pageoff]
     write32le(jmp + 20, 0xd61f0200); // br x16
 #endif
-    
+
     goti = NULL;
     mo->nr_plt = mo->n_got = 0;
     for (i = 1; i < s1->nb_sections; i++) {

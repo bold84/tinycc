@@ -114,7 +114,7 @@ unsigned long strlen(const char *s)
 static void pr_num(int num)
 {
     char val[20], *p = &val[20];
-    
+
     *--p = '\0';
     do {
 	int a = num, b = 0;

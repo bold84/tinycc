@@ -1,6 +1,6 @@
 /*
  *  TCC - Tiny C Compiler
- * 
+ *
  *  Copyright (c) 2001-2004 Fabrice Bellard
  *
  * This library is free software; you can redistribute it and/or
@@ -61,7 +61,7 @@ static struct TinyAlloc *tokstr_alloc;
 
 static TokenString *macro_stack;
 
-static const char tcc_keywords[] = 
+static const char tcc_keywords[] =
 #define DEF(id, str) str "\0"
 #include "tcctok.h"
 #undef DEF
@@ -465,7 +465,7 @@ static TokenSym *tok_alloc_new(TokenSym **pts, const char *str, int len)
     TokenSym *ts, **ptable;
     int i;
 
-    if (tok_ident >= SYM_FIRST_ANOM) 
+    if (tok_ident >= SYM_FIRST_ANOM)
         tcc_error("memory full (symbols)");
 
     /* expand token table if needed */
@@ -500,7 +500,7 @@ ST_FUNC TokenSym *tok_alloc(const char *str, int len)
     TokenSym *ts, **pts;
     int i;
     unsigned int h;
-    
+
     h = TOK_HASH_INIT;
     for(i=0;i<len;i++)
         h = TOK_HASH_FUNC(h, ((unsigned char *)str)[i]);
@@ -928,7 +928,7 @@ redo_start:
                 file->buf_ptr = p;
                 next_nomacro();
                 p = file->buf_ptr;
-                if (a == 0 && 
+                if (a == 0 &&
                     (tok == TOK_ELSE || tok == TOK_ELIF || tok == TOK_ENDIF))
                     goto the_end;
                 if (tok == TOK_IF || tok == TOK_IFDEF || tok == TOK_IFNDEF)
@@ -1459,7 +1459,7 @@ static int expr_preprocess(TCCState *s1)
     int c, t;
     int t0 = tok;
     TokenString *str;
-    
+
     str = tok_str_alloc();
     pp_expr = 1;
     while (1) {
@@ -1475,7 +1475,7 @@ static int expr_preprocess(TCCState *s1)
             parse_flags &= ~PARSE_FLAG_PREPROCESS; /* no macro subst */
             next();
             t = tok;
-            if (t == '(') 
+            if (t == '(')
                 next();
             parse_flags |= PARSE_FLAG_PREPROCESS;
             if (tok < TOK_IDENT)
@@ -2094,7 +2094,7 @@ static void parse_escape_string(CString *outstr, const uint8_t *buf, int is_long
                 break;
             case '\'':
             case '\"':
-            case '\\': 
+            case '\\':
             case '?':
                 break;
             default:
@@ -2331,7 +2331,7 @@ static void parse_number(const char *p)
             *q = '\0';
             if (b == 16)
                 shift = 4;
-            else 
+            else
                 shift = 1;
             bn_zero(bn);
             q = token_buf;
@@ -2388,7 +2388,7 @@ static void parse_number(const char *p)
                 ch = *p++;
             }
             exp_val = exp_val * s;
-            
+
             /* now we can generate the number */
             /* XXX: should patch directly float number */
 #ifdef TCC_USING_DOUBLE_FOR_LDOUBLE
@@ -2686,7 +2686,7 @@ maybe_newline:
     case '#':
         /* XXX: simplify */
         PEEKC(c, p);
-        if ((tok_flags & TOK_FLAG_BOL) && 
+        if ((tok_flags & TOK_FLAG_BOL) &&
             (parse_flags & PARSE_FLAG_PREPROCESS)) {
             tok_flags &= ~TOK_FLAG_BOL;
             file->buf_ptr = p;
@@ -2710,7 +2710,7 @@ maybe_newline:
             }
         }
         break;
-    
+
     /* dollar is allowed to start identifiers when not parsing asm */
     case '$':
         if (!(isidnum_table['$' - CH_EOF] & IS_ID)
@@ -2723,14 +2723,14 @@ maybe_newline:
     case 'm': case 'n': case 'o': case 'p':
     case 'q': case 'r': case 's': case 't':
     case 'u': case 'v': case 'w': case 'x':
-    case 'y': case 'z': 
+    case 'y': case 'z':
     case 'A': case 'B': case 'C': case 'D':
     case 'E': case 'F': case 'G': case 'H':
-    case 'I': case 'J': case 'K': 
+    case 'I': case 'J': case 'K':
     case 'M': case 'N': case 'O': case 'P':
     case 'Q': case 'R': case 'S': case 'T':
     case 'U': case 'V': case 'W': case 'X':
-    case 'Y': case 'Z': 
+    case 'Y': case 'Z':
     case '_':
     parse_ident_fast:
         p1 = p;
@@ -2887,7 +2887,7 @@ maybe_newline:
             tok = TOK_GT;
         }
         break;
-        
+
     case '&':
         PEEKC(c, p);
         if (c == '&') {
@@ -2900,7 +2900,7 @@ maybe_newline:
             tok = '&';
         }
         break;
-        
+
     case '|':
         PEEKC(c, p);
         if (c == '|') {
@@ -2926,7 +2926,7 @@ maybe_newline:
             tok = '+';
         }
         break;
-        
+
     case '-':
         PEEKC(c, p);
         if (c == '-') {
@@ -2948,7 +2948,7 @@ maybe_newline:
     PARSE2('*', '*', '=', TOK_A_MUL)
     PARSE2('%', '%', '=', TOK_A_MOD)
     PARSE2('^', '^', '=', TOK_A_XOR)
-        
+
         /* comments or operator */
     case '/':
         PEEKC(c, p);
@@ -2968,7 +2968,7 @@ maybe_newline:
             tok = '/';
         }
         break;
-        
+
         /* simple tokens */
     case '@': /* only used in assembler */
 #ifdef TCC_TARGET_ARM /* comment on arm asm */

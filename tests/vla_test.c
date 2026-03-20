@@ -18,13 +18,13 @@ void smash(char *p, int n) {
 int test1(int n) {
   int i;
   char *array_ptrs[LOOP_COUNT];
-  
+
   for (i = 0; i < LOOP_COUNT; ++i) {
     char test[n];
     smash(test, n);
     array_ptrs[i] = test;
   }
-  
+
   return (array_ptrs[0]-array_ptrs[LOOP_COUNT-1] < n) ? 0 : 1;
 }
 

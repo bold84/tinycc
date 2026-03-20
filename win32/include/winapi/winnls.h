@@ -583,13 +583,13 @@ extern "C" {
   enum SYSGEOCLASS {
     GEOCLASS_NATION = 16,GEOCLASS_REGION = 14
   };
-  
+
   typedef enum  _NORM_FORM  {
   NormalizationOther   = 0,
   NormalizationC       = 0x1,
   NormalizationD       = 0x2,
   NormalizationKC      = 0x5,
-  NormalizationKD      = 0x6 
+  NormalizationKD      = 0x6
 } NORM_FORM;
 
   typedef WINBOOL (CALLBACK *LANGUAGEGROUP_ENUMPROCA)(LGRPID,LPSTR,LPSTR,DWORD,LONG_PTR);

@@ -309,7 +309,7 @@ void test_init_ranges(void) {
     printf ("%d\n", c);
 }
 
-
+
 /* Following is from GCC gcc.c-torture/execute/20050613-1.c.  */
 
 struct SEA { int i; int j; int k; int l; };
@@ -387,7 +387,7 @@ test_init_bf(void)
     printf ("%s: %d %d %d\n", __FUNCTION__, arr[0].a, arr[0].b, arr[0].c);
 }
 
-
+
 int main()
 {
   print(ce);

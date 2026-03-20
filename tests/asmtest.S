@@ -43,7 +43,7 @@ mov 0x10000, %eax
 mov 0x10000, %ax
 mov 0x10000, %al
 mov %al, 0x10000
-                
+
 mov $1, %edx
 mov $1, %dx
 mov $1, %cl
@@ -67,7 +67,7 @@ movl $0x11334455,(%rbx)
 #endif
 
 mov %eax, 0x12(,%edx,2)
-        
+
 #ifdef __i386__
 mov %cr3, %edx
 mov %ecx, %cr3
@@ -110,10 +110,10 @@ notl %r15d
      movzbl 0x1000, %eax
      movzbw 0x1000, %ax
      movzwl 0x1000, %eax
-            
+
      movzb 0x1000, %eax
      movzb 0x1000, %ax
-                
+
      mov $0x12345678,%eax
 
 #ifdef __x86_64__
@@ -130,7 +130,7 @@ notl %r15d
      mov $0x123456789abcdef0,%rcx
      mov $0x123456789abcdef0,%r11
 #endif
-        
+
 #ifdef __i386__
   pushl %eax
   push %eax
@@ -145,7 +145,7 @@ notl %r15d
   push $100
   push 0x42(%eax)
   pop 0x43(%esi)
-                                                
+
 #ifdef __i386__
   popl %eax
   pop %eax
@@ -156,31 +156,31 @@ notl %r15d
 #endif
   popw %ax
   pop %fs
-          
+
   xchg %eax, %ecx
   xchg %edx, %eax
   xchg %bx, 0x10000
   xchg 0x10000, %ebx
   xchg 0x10000, %dl
 
-  in $100, %al               
-  in $100, %ax               
+  in $100, %al
+  in $100, %ax
   in $100, %eax
   in %dx, %al
-  in %dx, %ax               
+  in %dx, %ax
   in %dx, %eax
   inb %dx
-  inw %dx               
+  inw %dx
   inl %dx
 
-  out %al, $100                       
-  out %ax, $100                       
-  out %eax, $100                       
+  out %al, $100
+  out %ax, $100
+  out %eax, $100
 
   /* NOTE: gas is bugged here, so size must be added */
-  outb %al, %dx                       
-  outw %ax, %dx                       
-  outl %eax, %dx                       
+  outb %al, %dx
+  outw %ax, %dx
+  outl %eax, %dx
 
   leal 0x1000(%ebx), %ecx
   lea 0x1000(%ebx), %ecx
@@ -242,10 +242,10 @@ movb $15, %r12b
 
 add %eax, (%ebx)
 add (%ebx), %eax
-                
+
 or %dx, (%ebx)
 or (%ebx), %si
-        
+
 add %cl, (%ebx)
 add (%ebx), %dl
 
@@ -253,7 +253,7 @@ add (%ebx), %dl
     incl 0x10000
     incb 0x10000
     dec %dx
-  
+
   test $1, %al
   test $1, %cl
 
@@ -285,7 +285,7 @@ add (%ebx), %dl
     imul $10, %eax
     imul $0x1100000, %eax
     imul $1, %eax
-    
+
     idivw 0x1000
     div %ecx
     div %bl
@@ -381,7 +381,7 @@ L3:
  loop L3
  jecxz L3
 
-        
+
  seto %al
  setc %al
  setcb %al
@@ -509,7 +509,7 @@ L3:
  frstor 0x1000
  ffree %st(7)
  ffreep %st(6)
- 
+
     ftst
     fxam
     fld1
@@ -675,7 +675,7 @@ int $0x10
     repz  cmpsb
     repne movsb
     repnz outsb
-    
+
     invd
     wbinvd
     cpuid
@@ -721,13 +721,13 @@ int $0x10
     movd 0x1000, %mm2
     movd %mm4, %ecx
     movd %mm5, 0x1000
-                    
+
     movq 0x1000, %mm2
     movq %mm4, 0x1000
-    
+
     pand 0x1000, %mm3
     pand %mm4, %mm5
-    
+
     psllw $1, %mm6
     psllw 0x1000, %mm7
     psllw %mm2, %mm7
@@ -827,10 +827,10 @@ int $0x10
     str 0x1000
     str %ecx
     str %dx
-    
+
     verr 0x1000
     verw 0x1000
-  
+
 #ifdef __i386__
     push %ds
     pushw %ds
@@ -947,7 +947,7 @@ overrideme:
     movq %rdx, %xmm2
     movq %r13, %xmm3
     /* movq mem64->xmm is encoded as f30f7e by GAS, but as
-       660f6e by tcc (which really is a movd and would need 
+       660f6e by tcc (which really is a movd and would need
        a REX.W prefix to be movq).  */
     movq (%rsi), %xmm3
     movq %mm1, %rdx

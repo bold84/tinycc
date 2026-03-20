@@ -996,7 +996,7 @@ static addr_t rt_printline_dwarf (rt_context *rc, addr_t wanted_pc, bt_info *bi)
 				    : dwarf_read_8(ln, end);
 #endif
 		    }
-		    else 
+		    else
 			dwarf_ignore_type(ln, end);
 		}
 	    }
@@ -1028,7 +1028,7 @@ static addr_t rt_printline_dwarf (rt_context *rc, addr_t wanted_pc, bt_info *bi)
 		        if (i < FILE_TABLE_SIZE)
 		            filename_table[i].dir_entry = value;
 		    }
-		    else 
+		    else
 			dwarf_ignore_type(ln, end);
 	    }
 	}

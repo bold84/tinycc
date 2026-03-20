@@ -108,7 +108,7 @@ ALT(DEF_ASM_OP2(lzcntw, 0xf30fbd, 0, OPC_MODRM | OPC_WLX, OPT_REGW | OPT_EA, OPT
      DEF_ASM_OP0(ud2, 0x0f0b)
 
      /* NOTE: we took the same order as gas opcode definition order */
-/* Right now we can't express the fact that 0xa1/0xa3 can't use $eax and a 
+/* Right now we can't express the fact that 0xa1/0xa3 can't use $eax and a
    32 bit moffset as operands.
 ALT(DEF_ASM_OP2(movb, 0xa0, 0, OPC_BWLX, OPT_ADDR, OPT_EAX))
 ALT(DEF_ASM_OP2(movb, 0xa2, 0, OPC_BWLX, OPT_EAX, OPT_ADDR)) */

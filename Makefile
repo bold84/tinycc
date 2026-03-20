@@ -308,11 +308,11 @@ libtcc.so: override LDFLAGS += -fPIC
 
 # OSX dynamic libtcc library
 libtcc.dylib: $(LIBTCC_OBJ)
-	$S$(CC) -dynamiclib $(DYLIBVER) -install_name @rpath/$@ -o $@ $^ $(LDFLAGS) 
+	$S$(CC) -dynamiclib $(DYLIBVER) -install_name @rpath/$@ -o $@ $^ $(LDFLAGS)
 
 # OSX libtcc.dylib (without rpath/ prefix)
 libtcc.osx: $(LIBTCC_OBJ)
-	$S$(CC) -shared -install_name libtcc.dylib -o libtcc.dylib $^ $(LDFLAGS) 
+	$S$(CC) -shared -install_name libtcc.dylib -o libtcc.dylib $^ $(LDFLAGS)
 
 # windows dynamic libtcc library
 libtcc.dll : $(LIBTCC_OBJ)
