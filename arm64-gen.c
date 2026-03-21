@@ -302,7 +302,7 @@ static void arm64_spoff(int reg, uint64_t off)
         o(ARM64_ADD_IMM | ARM64_SF(1) | ARM64_RN(31) | ARM64_RD(reg) | ARM64_IMM12(off));
     else {
         arm64_movimm(30, off);
-        o(ARM64_ADD_REG | ARM64_SF(1) | ARM64_RM(30) | ARM64_RN(31) | ARM64_RD(reg) | (sub << 31));
+        o(ARM64_ADD_REG | ARM64_SF(1) | ARM64_RM(30) | ARM64_RN(31) | ARM64_RD(reg) | (sub << 30));
     }
 }
 
@@ -521,15 +521,15 @@ ST_FUNC void load(int r, SValue *sv)
     int svtt = sv->type.t;
     int svr = sv->r & ~(VT_BOUNDED | VT_NONCONST);
     int svrv = svr & VT_VALMASK;
-    uint64_t svcul = (uint32_t)sv->c.i;
-    svcul = svcul >> 31 & 1 ? svcul - ((uint64_t)1 << 32) : svcul;
+    uint64_t svcul = sv->c.i;
+    uint64_t svcoff = (uint64_t)(int64_t)(int32_t)sv->c.i;
 
     if (svr == (VT_LOCAL | VT_LVAL)) {
         if (IS_FREG(r))
-            arm64_ldrv(arm64_type_size(svtt), fltr(r), 29, svcul);
+            arm64_ldrv(arm64_type_size(svtt), fltr(r), 29, svcoff);
         else
             arm64_ldrx(!(svtt & VT_UNSIGNED), arm64_type_size(svtt),
-                       intr(r), 29, svcul);
+                       intr(r), 29, svcoff);
         return;
     }
 
@@ -563,13 +563,13 @@ ST_FUNC void load(int r, SValue *sv)
 
     if (svr == (VT_CONST | VT_LVAL | VT_SYM)) {
         arm64_sym(30, sv->sym, // use x30 for address
-		  arm64_check_offset(0, arm64_type_size(svtt), svcul));
+		  arm64_check_offset(0, arm64_type_size(svtt), svcoff));
         if (IS_FREG(r))
             arm64_ldrv(arm64_type_size(svtt), fltr(r), 30,
-		       arm64_check_offset(1, arm64_type_size(svtt), svcul));
+		       arm64_check_offset(1, arm64_type_size(svtt), svcoff));
         else
             arm64_ldrx(!(svtt&VT_UNSIGNED), arm64_type_size(svtt), intr(r), 30,
-		       arm64_check_offset(1, arm64_type_size(svtt), svcul));
+		       arm64_check_offset(1, arm64_type_size(svtt), svcoff));
         return;
     }
 
@@ -600,10 +600,10 @@ ST_FUNC void load(int r, SValue *sv)
     }
 
     if (svr == VT_LOCAL) {
-        if (-svcul < 0x1000)
-            o(0xd10003a0 | intr(r) | -svcul << 10); // sub x(r),x29,#...
+        if (-svcoff < 0x1000)
+            o(0xd10003a0 | intr(r) | -svcoff << 10); // sub x(r),x29,#...
         else {
-            arm64_movimm(30, -svcul); // use x30 for offset
+            arm64_movimm(30, -svcoff); // use x30 for offset
             o(0xcb0003a0 | intr(r) | (uint32_t)30 << 16); // sub x(r),x29,x30
         }
         return;
@@ -619,7 +619,7 @@ ST_FUNC void load(int r, SValue *sv)
     }
 
     if (svr == (VT_LLOCAL | VT_LVAL)) {
-        arm64_ldrx(0, 3, 30, 29, svcul); // use x30 for offset
+        arm64_ldrx(0, 3, 30, 29, svcoff); // use x30 for offset
         if (IS_FREG(r))
             arm64_ldrv(arm64_type_size(svtt), fltr(r), 30, 0);
         else
@@ -642,14 +642,13 @@ ST_FUNC void store(int r, SValue *sv)
     int svtt = sv->type.t;
     int svr = sv->r & ~VT_BOUNDED;
     int svrv = svr & VT_VALMASK;
-    uint64_t svcul = (uint32_t)sv->c.i;
-    svcul = svcul >> 31 & 1 ? svcul - ((uint64_t)1 << 32) : svcul;
+    uint64_t svcoff = (uint64_t)(int64_t)(int32_t)sv->c.i;
 
     if (svr == (VT_LOCAL | VT_LVAL)) {
         if (IS_FREG(r))
-            arm64_strv(arm64_type_size(svtt), fltr(r), 29, svcul);
+            arm64_strv(arm64_type_size(svtt), fltr(r), 29, svcoff);
         else
-            arm64_strx(arm64_type_size(svtt), intr(r), 29, svcul);
+            arm64_strx(arm64_type_size(svtt), intr(r), 29, svcoff);
         return;
     }
 
@@ -680,17 +679,17 @@ ST_FUNC void store(int r, SValue *sv)
 
     if (svr == (VT_CONST | VT_LVAL | VT_SYM)) {
         arm64_sym(30, sv->sym, // use x30 for address
-		  arm64_check_offset(0, arm64_type_size(svtt), svcul));
+		  arm64_check_offset(0, arm64_type_size(svtt), svcoff));
         if (IS_FREG(r))
             arm64_strv(arm64_type_size(svtt), fltr(r), 30,
-		       arm64_check_offset(1, arm64_type_size(svtt), svcul));
+		       arm64_check_offset(1, arm64_type_size(svtt), svcoff));
         else
             arm64_strx(arm64_type_size(svtt), intr(r), 30,
-		       arm64_check_offset(1, arm64_type_size(svtt), svcul));
+		       arm64_check_offset(1, arm64_type_size(svtt), svcoff));
         return;
     }
 
-    printf("store(%x, (%x, %x, %lx))\n", r, svtt, sv->r, (long)svcul);
+    printf("store(%x, (%x, %x, %lx))\n", r, svtt, sv->r, (long)svcoff);
     assert(0);
 }
 

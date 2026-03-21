@@ -676,7 +676,7 @@
 #define ARM64_BL          0x94000000U
 #define ARM64_BR          0xD61F0000U
 #define ARM64_BLR         0xD63F0000U
-#define ARM64_RET         0xD65F001FU
+#define ARM64_RET         0xD65F0000U
 
 /* Conditional branch */
 #define ARM64_B_COND      0x54000000U

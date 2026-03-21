@@ -40,9 +40,21 @@ static HMODULE pe_get_process_msvcrt_handle(void)
     wait_sem(&pe_msvcrt_sem);
     dll = handle;
     if (!dll) {
-        dll = GetModuleHandleA("msvcrt.dll");
-        if (dll)
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, "msvcrt.dll", &dll)) {
             handle = dll;
+        } else {
+            dll = LoadLibraryA("msvcrt.dll");
+            if (dll) {
+                HMODULE pinned;
+                /* Keep one process-lifetime handle so later states do not cache
+                   an unloadable msvcrt handle after the first state is deleted. */
+                if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, "msvcrt.dll", &pinned)) {
+                    FreeLibrary(dll);
+                    dll = pinned;
+                }
+                handle = dll;
+            }
+        }
     }
     post_sem(&pe_msvcrt_sem);
     return dll;
