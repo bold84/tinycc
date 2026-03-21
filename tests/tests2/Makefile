@@ -139,6 +139,7 @@ endif
 126_bound_global.test: FLAGS += -b
 126_bound_global.test: NORUN = true
 128_run_atexit.test: FLAGS += -dt
+SKIP += 139_arm64_errors.test  # requires multiple compilations with different -D flags
 132_bound_test.test: FLAGS += -b
 
 # Filter source directory in warnings/errors (out-of-tree builds)
