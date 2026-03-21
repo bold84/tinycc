@@ -155,10 +155,19 @@ void test_multiple_io(void)
     printf("Test 13 (multiple IO): PASSED\n");
 }
 
-/* Test 14: Register variable preservation - SKIPPED */
+/* Test 14: Register variable preservation */
 void test_regvar_preservation(void)
 {
-    printf("Test 14 (regvar preservation): SKIPPED\n");
+    register uint64_t keep asm("x19") = 0x123456789abcdef0ULL;
+    uint64_t out;
+
+    asm volatile("mov x19, #7; add %0, x19, #1"
+        : "=r"(out)
+        :
+        : "x19");
+    assert(keep == 0x123456789abcdef0ULL);
+    assert(out == 8);
+    printf("Test 14 (regvar preservation): PASSED\n");
 }
 
 /* Test 15: Complex arithmetic */
@@ -213,10 +222,27 @@ void test_large_immediate(void)
     printf("Test 19 (large immediate): PASSED\n");
 }
 
-/* Test 20: Bitwise operations - SKIPPED (and imm not implemented) */
+/* Test 20: Bitwise operations */
 void test_bitwise_ops(void)
 {
-    printf("Test 20 (bitwise ops): SKIPPED\n");
+    uint64_t a = 0xf0f0f0f00f0f0f0fULL;
+    uint64_t b = 0x3333ffff0000ccccULL;
+    uint64_t andv;
+    uint64_t orv;
+    uint64_t xorv;
+    uint64_t imm_and;
+
+    asm("and %0, %1, %2" : "=r"(andv) : "r"(a), "r"(b));
+    asm("orr %0, %1, %2" : "=r"(orv) : "r"(a), "r"(b));
+    asm("eor %0, %1, %2" : "=r"(xorv) : "r"(a), "r"(b));
+    asm("and %0, %1, %2" : "=r"(imm_and)
+        : "r"(~0ULL), "L"(0xff00ff00ff00ff00ULL));
+
+    assert(andv == (a & b));
+    assert(orv == (a | b));
+    assert(xorv == (a ^ b));
+    assert(imm_and == 0xff00ff00ff00ff00ULL);
+    printf("Test 20 (bitwise ops): PASSED\n");
 }
 
 /* Test 21: Register shift operands */
