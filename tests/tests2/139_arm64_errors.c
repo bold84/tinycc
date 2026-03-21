@@ -47,16 +47,16 @@ int main(void)
 int main(void)
 {
     int x = 1;
-    /* Extended inline asm with operands is not implemented */
-    __asm__("add %0, %0, #1" : "=r"(x) : "0"(x));
+    /* Invalid operand reference in extended inline asm */
+    __asm__("add %0, %1, #1" : "=r"(x) : "2"(x));
     return 0;
 }
 
 #elif defined test_extended_inline_clobber
 int main(void)
 {
-    /* Extended inline asm with clobbers is not implemented */
-    __asm__ volatile ("nop" : : : "x0");
+    /* Invalid clobber register name */
+    __asm__ volatile ("nop" : : : "bogus");
     return 0;
 }
 
