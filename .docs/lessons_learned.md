@@ -25,3 +25,10 @@ Root Cause: A new helper in `arm64-asm.c` reused the name `arm64_encode_bimm64`,
 Solution: Rename ARM64 inline-asm-only helpers so they cannot collide with backend helpers in one-source builds.
 Prevention: After adding new `static` helpers in target files, run `make test`, not just `make tcc`. This project still exercises one-source builds that expose cross-file static-name collisions.
 Related Files: [arm64-asm.c, arm64-gen.c, Makefile, tests/Makefile]
+
+Date: 2026-03-21
+Problem: `make test` still failed after the ARM64 inline-asm implementation itself was working and the dedicated `arm64-ext-asm` test passed.
+Root Cause: Two `tests/tests2` fixtures had drifted. `139_arm64_errors.test` depended on `-dt` multi-snippet mode but the Makefile never enabled it, so the harness ran the file as a normal program and printed the TCC usage text instead of per-case errors. `138_arm64_encoding.expect` also had a stale hex typo, and `139_arm64_errors.expect` still expected the old "extended inline asm is not implemented" errors.
+Solution: Enable `-dt` for `139_arm64_errors.test`, update the stale expected hex value in `138_arm64_encoding.expect`, and replace the obsolete ARM64 inline-asm error expectations with current checks for an invalid operand reference and an invalid clobber register.
+Prevention: When adding new `tests/tests2` multi-case files, wire `-dt` in `tests/tests2/Makefile` immediately and rerun the specific tests2 targets before trusting a full `make test` failure. If a feature graduates from "not implemented" to supported, audit any negative tests for obsolete expectations.
+Related Files: [tests/tests2/Makefile, tests/tests2/138_arm64_encoding.expect, tests/tests2/139_arm64_errors.c, tests/tests2/139_arm64_errors.expect]
