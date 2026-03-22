@@ -3,9 +3,30 @@
     .global arm64_call_with_dregs
 
 arm64_call_with_dregs:
-    stp x29, x30, [sp, -32]!
-    stp x19, x20, [sp, 16]
-    mov x29, sp
+    .seh_proc arm64_call_with_dregs
+    sub sp, sp, 80
+    .seh_stackalloc 80
+    str x30, [sp, 0]
+    .seh_save_reg x30, 0
+    str x19, [sp, 8]
+    .seh_save_reg x19, 8
+    str d8, [sp, 16]
+    .seh_save_freg d8, 16
+    str d9, [sp, 24]
+    .seh_save_freg d9, 24
+    str d10, [sp, 32]
+    .seh_save_freg d10, 32
+    str d11, [sp, 40]
+    .seh_save_freg d11, 40
+    str d12, [sp, 48]
+    .seh_save_freg d12, 48
+    str d13, [sp, 56]
+    .seh_save_freg d13, 56
+    str d14, [sp, 64]
+    .seh_save_freg d14, 64
+    str d15, [sp, 72]
+    .seh_save_freg d15, 72
+    .seh_endprologue
     mov x19, x1
 
     ldr d8, [x0, 0]
@@ -29,6 +50,16 @@ arm64_call_with_dregs:
     str d14, [x19, 48]
     str d15, [x19, 56]
 
-    ldp x19, x20, [sp, 16]
-    ldp x29, x30, [sp], 32
+    ldr d8, [sp, 16]
+    ldr d9, [sp, 24]
+    ldr d10, [sp, 32]
+    ldr d11, [sp, 40]
+    ldr d12, [sp, 48]
+    ldr d13, [sp, 56]
+    ldr d14, [sp, 64]
+    ldr d15, [sp, 72]
+    ldr x19, [sp, 8]
+    ldr x30, [sp, 0]
+    add sp, sp, 80
     ret
+    .seh_endproc

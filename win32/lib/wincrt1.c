@@ -5,7 +5,6 @@
 
 #include <windows.h>
 #include <stdlib.h>
-
 #define __UNKNOWN_APP    0
 #define __CONSOLE_APP    1
 #define __GUI_APP        2
@@ -27,9 +26,53 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int);
 
 typedef struct { int newmode; } _startupinfo;
 int __cdecl __tgetmainargs(int *pargc, _TCHAR ***pargv, _TCHAR ***penv, int globb, _startupinfo*);
+int __cdecl __getmainargs(int *pargc, char ***pargv, char ***penv, int globb, _startupinfo*);
+int __cdecl __wgetmainargs(int *pargc, wchar_t ***pargv, wchar_t ***penv, int globb, _startupinfo*);
 int __cdecl get_tenviron(_TCHAR ***penv);
+__attribute__((weak)) int __cdecl __rt_get_run_argstart(void);
 
 #include "crtinit.c"
+
+static int select_run_arg_start_t(int base, const _TCHAR *arg0, int full_argc, _TCHAR **full_argv)
+{
+    int i;
+
+    if (base < 0 || base > full_argc)
+        return -1;
+    if (!arg0)
+        return base;
+    for (i = base; i < full_argc; ++i) {
+        if (full_argv[i] && 0 == _tcscmp(full_argv[i], arg0))
+            return i;
+    }
+    return base;
+}
+
+static int find_run_arg_slice(int globb, int *pstart, int *prun_argc)
+{
+    int literal_argc, full_argc, base, start, ret = 0;
+    _TCHAR **literal_argv = NULL, **full_argv = NULL;
+    _startupinfo start_info = {0};
+
+    if (!__rt_get_run_argstart)
+        return 0;
+    base = __rt_get_run_argstart();
+    if (base < 0)
+        return 0;
+    if (__tgetmainargs(&literal_argc, &literal_argv, NULL, 0, &start_info))
+        return 0;
+    if (base >= literal_argc)
+        return 0;
+    if (__tgetmainargs(&full_argc, &full_argv, NULL, globb, &start_info))
+        return 0;
+    start = select_run_arg_start_t(base, literal_argv[base], full_argc, full_argv);
+    if (start < 0 || start > full_argc)
+        return 0;
+    *pstart = start;
+    *prun_argc = full_argc - start;
+    ret = 1;
+    return ret;
+}
 
 static int go_winmain(TCHAR *arg1)
 {
@@ -78,14 +121,42 @@ int _twinstart(void)
 
 int _runtwinmain(int argc, /* as tcc passed in */ char **argv)
 {
+    int saved_argc = __argc;
+    _TCHAR **saved_argv = __targv;
+    int ret;
+    int run_arg_start = -1;
 #ifdef UNICODE
-    _startupinfo start_info = {0};
-    __tgetmainargs(&__argc, &__targv, NULL, 0, &start_info);
-    /* may be wrong when tcc has received wildcards (*.c) */
-    if (argc < __argc)
-        __targv += __argc - argc, __argc = argc;
+    {
+        int full_argc;
+        _TCHAR **full_argv = NULL;
+        _startupinfo start_info = {0};
+
+        if (find_run_arg_slice(0, &run_arg_start, &__argc)
+            && !__tgetmainargs(&full_argc, &full_argv, NULL, 0, &start_info)
+            && run_arg_start <= full_argc)
+            __targv = full_argv + run_arg_start;
+        else {
+            __tgetmainargs(&__argc, &__targv, NULL, 0, &start_info);
+            if (argc < __argc)
+                __targv += __argc - argc, __argc = argc;
+        }
+    }
 #else
-    __argc = argc, __targv = argv;
+    {
+        int full_argc;
+        _TCHAR **full_argv = NULL;
+        _startupinfo start_info = {0};
+
+        if (find_run_arg_slice(0, &run_arg_start, &__argc)
+            && !__tgetmainargs(&full_argc, &full_argv, NULL, 0, &start_info)
+            && run_arg_start <= full_argc)
+            __targv = full_argv + run_arg_start;
+        else
+            __argc = argc, __targv = argv;
+    }
 #endif
-    return go_winmain(__argc > 1 ? __targv[1] : NULL);
+    ret = go_winmain(__argc > 1 ? __targv[1] : NULL);
+    __argc = saved_argc;
+    __targv = saved_argv;
+    return ret;
 }

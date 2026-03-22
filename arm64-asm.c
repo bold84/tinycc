@@ -479,17 +479,45 @@ static void gen_ldst_imm(uint32_t base_opcode, int rt, int rn,
                          int32_t offset, int size_log2)
 {
     uint32_t instr = base_opcode;
+    uint32_t unscaled_opcode = 0;
     uint32_t imm12;
 
-    if (offset < 0 || (offset & ((1 << size_log2) - 1)))
+    if (offset >= 0 && !(offset & ((1 << size_log2) - 1))) {
+        imm12 = offset >> size_log2;
+        if (imm12 <= 0xFFF) {
+            instr |= ARM64_IMM12(imm12);
+            instr |= ARM64_RN(rn);
+            instr |= ARM64_RT(rt);
+            emit_instr32(instr);
+            return;
+        }
+    }
+
+    switch (base_opcode) {
+    case ARM64_LDR_X: unscaled_opcode = ARM64_LDUR_X; break;
+    case ARM64_LDR_W: unscaled_opcode = ARM64_LDUR_W; break;
+    case ARM64_LDR_B: unscaled_opcode = ARM64_LDUR_B; break;
+    case ARM64_LDR_H: unscaled_opcode = ARM64_LDUR_H; break;
+    case ARM64_LDR_D: unscaled_opcode = ARM64_LDUR_D_SIMD; break;
+    case ARM64_STR_X: unscaled_opcode = ARM64_STUR_X; break;
+    case ARM64_STR_W: unscaled_opcode = ARM64_STUR_W; break;
+    case ARM64_STR_B: unscaled_opcode = ARM64_STUR_B; break;
+    case ARM64_STR_H: unscaled_opcode = ARM64_STUR_H; break;
+    case ARM64_STR_D: unscaled_opcode = ARM64_STUR_D_SIMD; break;
+    }
+
+    if (unscaled_opcode && offset >= -256 && offset <= 255) {
+        instr = unscaled_opcode;
+        instr |= ((uint32_t)offset & 0x1FFU) << 12;
+        instr |= ARM64_RN(rn);
+        instr |= ARM64_RT(rt);
+        emit_instr32(instr);
+        return;
+    }
+
+    if (offset & ((1 << size_log2) - 1))
         tcc_error("invalid load/store offset");
-    imm12 = offset >> size_log2;
-    if (imm12 > 0xFFF)
-        tcc_error("load/store offset out of range");
-    instr |= ARM64_IMM12(imm12);
-    instr |= ARM64_RN(rn);
-    instr |= ARM64_RT(rt);
-    emit_instr32(instr);
+    tcc_error("load/store offset out of range");
 }
 
 /* Generate STP/LDP (signed immediate) */
@@ -826,15 +854,41 @@ static int arm64_memory_is_pair_suitable(const SValue *sv)
     return (offset & 7) == 0 && offset >= -512 && offset <= 504;
 }
 
+static int arm64_int_reg_is_allocatable(int reg)
+{
+#ifdef TCC_TARGET_PE
+    return reg >= TREG_X0 && reg <= TREG_X17;
+#else
+    return reg >= TREG_X0 && reg <= TREG_X30;
+#endif
+}
+
+static int arm64_memory_needs_address_reg(const SValue *sv)
+{
+    int r;
+
+    r = sv->r & ~(VT_BOUNDED | VT_NONCONST);
+    if (!(r & VT_LVAL))
+        return 0;
+    switch (r & VT_VALMASK) {
+    case VT_LOCAL:
+    case VT_LLOCAL:
+    case VT_CONST:
+        return 1;
+    }
+    return 0;
+}
+
 static int arm64_prepare_memory_operand(ASMOperand *op, uint8_t *regs_allocated)
 {
     int reg;
 
-    if ((op->vt->r & VT_VALMASK) != VT_LLOCAL)
+    if (!arm64_memory_needs_address_reg(op->vt))
         return 1;
 
     for (reg = 0; reg < 31; reg++) {
-        if (!(regs_allocated[reg] & REG_IN_MASK)) {
+        if (arm64_int_reg_is_allocatable(reg)
+            && !(regs_allocated[reg] & REG_IN_MASK)) {
             regs_allocated[reg] |= REG_IN_MASK;
             op->reg = reg;
             op->is_memory = 1;
@@ -842,6 +896,24 @@ static int arm64_prepare_memory_operand(ASMOperand *op, uint8_t *regs_allocated)
         }
     }
     return 0;
+}
+
+static void arm64_load_memory_operand_base(int reg, SValue *sv)
+{
+    SValue base;
+    int rval;
+
+    base = *sv;
+    base.type.t = VT_PTR;
+    rval = base.r & VT_VALMASK;
+    if (rval == VT_LLOCAL) {
+        base.r = (base.r & ~VT_VALMASK) | VT_LOCAL | VT_LVAL;
+    } else if (rval == VT_CONST || rval == VT_LOCAL) {
+        base.r &= ~VT_LVAL;
+    } else {
+        tcc_internal_error("unsupported ARM64 memory operand base");
+    }
+    load(reg, &base);
 }
 
 static int operand_is_sp(const Operand *op)
@@ -1804,8 +1876,11 @@ ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
             size = 1;
         else if ((sv->type.t & VT_BTYPE) == VT_SHORT)
             size = 2;
-        else
+        else if ((sv->type.t & VT_BTYPE) == VT_LLONG ||
+                 (sv->type.t & VT_BTYPE) == VT_PTR)
             size = 8;
+        else
+            size = 4;
 
         if (modifier == 'x') {
             size = 8;
@@ -1877,12 +1952,8 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
         for (i = 0; i < nb_operands; i++) {
             op = &operands[i];
             if (op->reg >= 0) {
-                if ((op->vt->r & VT_VALMASK) == VT_LLOCAL && op->is_memory) {
-                    SValue sv;
-                    sv = *op->vt;
-                    sv.r = (sv.r & ~VT_VALMASK) | VT_LOCAL | VT_LVAL;
-                    sv.type.t = VT_PTR;
-                    load(op->reg, &sv);
+                if (op->is_memory) {
+                    arm64_load_memory_operand_base(op->reg, op->vt);
                 } else if (i >= nb_outputs || op->is_rw) {
                     load(op->reg, op->vt);
                 }
@@ -1892,6 +1963,8 @@ ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
         for (i = 0; i < nb_outputs; i++) {
             op = &operands[i];
             if (op->reg >= 0) {
+                if (op->is_memory)
+                    continue;
                 if ((op->vt->r & VT_VALMASK) == VT_LLOCAL) {
                     if (!op->is_memory) {
                         SValue sv;
@@ -2026,7 +2099,8 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
             goto try_next;
         case 'r':
             for (reg = 0; reg < 31; reg++) {
-                if (!is_reg_allocated(reg))
+                if (arm64_int_reg_is_allocatable(reg)
+                    && !is_reg_allocated(reg))
                     goto reg_found;
             }
             goto try_next;
@@ -2116,8 +2190,8 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
                 goto try_next;
             break;
         default:
-            tcc_warning("asm constraint %d ('%s') could not be satisfied",
-                       j, op->constraint);
+            tcc_error("asm constraint %d ('%s') could not be satisfied",
+                      j, op->constraint);
             break;
         }
         if (op->input_index >= 0) {
@@ -2157,15 +2231,13 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
 ST_FUNC void asm_clobber(uint8_t *clobber_regs, const char *str)
 {
     int reg;
-    TokenSym *ts;
 
     if (!strcmp(str, "memory") ||
         !strcmp(str, "cc") ||
         !strcmp(str, "flags"))
         return;
 
-    ts = tok_alloc(str, strlen(str));
-    reg = arm64_parse_regvar(ts->tok);
+    reg = arm64_parse_regvar(tok_alloc_const(str));
     if (reg == -1)
         tcc_error("invalid clobber register '%s'", str);
     clobber_regs[reg] = 1;

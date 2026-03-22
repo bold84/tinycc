@@ -241,6 +241,13 @@ static wchar_t **rt_get_wenviron(void)
 #endif
     return env;
 }
+
+static int rt_run_argstart = -1;
+
+static int __cdecl rt_get_run_argstart(void)
+{
+    return rt_run_argstart;
+}
 #endif
 
 #ifdef _WIN32
@@ -288,6 +295,8 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 #ifdef _WIN32
     tcc_add_symbol(s1, "__rt_get_environ", rt_get_environ);
     tcc_add_symbol(s1, "__rt_get_wenviron", rt_get_wenviron);
+    tcc_add_symbol(s1, "__rt_get_run_argstart", rt_get_run_argstart);
+    rt_run_argstart = s1->run_arg_start;
 #endif
     s1->run_main = "_runmain", top_sym = "main";
     if (s1->elf_entryname)
@@ -296,7 +305,6 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
 
     if (tcc_relocate(s1) < 0)
         return -1;
-
     prog_main = (void*)get_sym_addr(s1, s1->run_main, 1, 1);
     if ((addr_t)-1 == (addr_t)prog_main)
         return -1;
@@ -318,12 +326,12 @@ LIBTCCAPI int tcc_run(TCCState *s1, int argc, char **argv)
     ret = tcc_setjmp(s1, main_jb, tcc_get_symbol(s1, top_sym));
     if (0 == ret) {
         ret = prog_main(argc, argv, envp);
-    } else if (RT_EXIT_ZERO == ret) {
+    } else if (RT_EXIT_ZERO == ret)
         ret = 0;
-    }
 
 #ifdef _WIN32
     rt_flush_target_io();
+    rt_run_argstart = -1;
 #endif
     fflush(stdout);
     fflush(stderr);

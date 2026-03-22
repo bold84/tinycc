@@ -70,6 +70,30 @@ void test_memory_store(void)
     printf("Test 5 (memory store): PASSED\n");
 }
 
+/* Test 5a: Stack memory operand with frame-relative offset */
+void test_stack_memory_operand(void)
+{
+    long x = 0;
+    long val = 321;
+
+    asm volatile("str %0, %1" : : "r"(val), "m"(x));
+    assert(x == 321);
+    printf("Test 5a (stack memory operand): PASSED\n");
+}
+
+/* Test 5b: Symbol memory operand */
+static long arm64_symbol_mem;
+
+void test_symbol_memory_operand(void)
+{
+    long val = 654;
+
+    arm64_symbol_mem = 0;
+    asm volatile("str %0, %1" : : "r"(val), "m"(arm64_symbol_mem));
+    assert(arm64_symbol_mem == 654);
+    printf("Test 5b (symbol memory operand): PASSED\n");
+}
+
 /* Test 6: Clobber list */
 void test_clobber_list(void)
 {
@@ -394,6 +418,8 @@ int main(void)
     test_read_write_operand();
     test_memory_load();
     test_memory_store();
+    test_stack_memory_operand();
+    test_symbol_memory_operand();
     test_clobber_list();
     test_multiple_outputs();
     test_constraint_reference();
