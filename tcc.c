@@ -330,7 +330,9 @@ redo:
     argc = argc0, argv = argv0;
     s = s1 = tcc_new();
     opt = tcc_parse_args(s, &argc, &argv);
+#ifdef TCC_IS_NATIVE
     s->run_arg_start = (int)(argv - argv0);
+#endif
 
     if (n == 0) {
         ret = 0;

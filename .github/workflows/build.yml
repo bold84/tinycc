@@ -169,6 +169,8 @@ jobs:
         powershell -NoProfile -Command "$before = @(Get-ChildItem -Path $env:TEMP -Filter 'tcc*.tmp' -Name -ErrorAction SilentlyContinue); & .\tcc -B. -run ..\win32\test_run_exit.c; if ($LASTEXITCODE -ne 27) { exit 1 }; $after = @(Get-ChildItem -Path $env:TEMP -Filter 'tcc*.tmp' -Name -ErrorAction SilentlyContinue); if (Compare-Object $before $after) { Write-Host 'Temporary -run file cleanup mismatch'; Compare-Object $before $after; exit 1 }"
         .\tcc -B. ..\win32\test_arm64.c -o test_arm64.exe && .\test_arm64.exe
         .\tcc -B. -run ..\examples\ex1.c
+        .\tcc -B. -run ..\tcc.c -B. -run ..\tcc.c -B. -run ..\examples\ex1.c > test_nested_run.out
+        findstr /x /c:"Hello World" test_nested_run.out
         clang -O0 -I.. ..\win32\test_arm64_libtcc_context.c ..\win32\test_arm64_libtcc_context.S -o test_libtcc_context.exe
         .\test_libtcc_context.exe
         .\tcc -B. ..\win32\test_arm64_inline_asm.c -o test_inline_asm.exe && .\test_inline_asm.exe > test_inline_asm.out
