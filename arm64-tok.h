@@ -770,7 +770,7 @@
 #define ARM64_OFFSET14(v) (((uint32_t)(v) >> 2) & 0x3FFFU)
 
 /* Special register field (for MRS/MSR) */
-#define ARM64_SYSREG(op0, op1, crn, crm, op2) \
+#define TCC_ARM64_SYSREG(op0, op1, crn, crm, op2) \
     ((((op0) & 3) << 19) | (((op1) & 7) << 16) | \
      (((crn) & 15) << 12) | (((crm) & 15) << 8) | (((op2) & 7) << 5))
 

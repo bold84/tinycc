@@ -48,9 +48,7 @@ __attribute__((weak)) char **__cdecl __rt_get_environ(void);
 #endif
 __attribute__((weak)) int __cdecl __rt_get_run_argstart(void);
 
-void __tcc_run_on_exit(int ret);
-int __tcc_on_exit(void *function, void *arg);
-int __tcc_atexit(void (*function)(void));
+__attribute__((weak)) void __run_on_exit(int ret);
 void __attribute__((noreturn)) __tcc_exit(int code);
 
 #include "crtinit.c"
@@ -235,6 +233,28 @@ static wchar_t *dup_run_wstr(const wchar_t *s)
     return copy;
 }
 
+static wchar_t *dup_run_wstr_from_tchar(const _TCHAR *s)
+{
+#ifdef UNICODE
+    return dup_run_wstr(s);
+#else
+    size_t len;
+    wchar_t *copy;
+
+    len = mbstowcs(NULL, s, 0);
+    if ((size_t)-1 == len)
+        return NULL;
+    copy = malloc(sizeof(*copy) * (len + 1));
+    if (!copy)
+        return NULL;
+    if ((size_t)-1 == mbstowcs(copy, s, len + 1)) {
+        free(copy);
+        return NULL;
+    }
+    return copy;
+#endif
+}
+
 static void free_run_wargv(wchar_t **argv)
 {
     int i;
@@ -327,6 +347,39 @@ done:
     return ok;
 }
 
+static wchar_t **build_run_wargv_from_targv(int src_argc, _TCHAR **src_argv, int base, int *prun_argc)
+{
+    wchar_t **run_argv = NULL;
+    int run_argc = 0, i;
+
+    if (base < 0 || base >= src_argc)
+        return NULL;
+    for (i = base; i < src_argc; ++i) {
+        wchar_t *copy;
+
+        if (!src_argv[i])
+            continue;
+        copy = dup_run_wstr_from_tchar(src_argv[i]);
+        if (!copy)
+            goto fail;
+        if (_dowildcard && i > base && run_has_wildcard(copy)) {
+            if (run_expand_wildcard_arg(copy, &run_argv, &run_argc)) {
+                free(copy);
+                continue;
+            }
+        }
+        if (!append_run_warg(&run_argv, &run_argc, copy)) {
+            free(copy);
+            goto fail;
+        }
+    }
+    *prun_argc = run_argc;
+    return run_argv;
+fail:
+    free_run_wargv(run_argv);
+    return NULL;
+}
+
 static wchar_t **build_run_wargv(int *prun_argc)
 {
     wchar_t **cmd_argv = NULL, **run_argv = NULL;
@@ -337,6 +390,16 @@ static wchar_t **build_run_wargv(int *prun_argc)
     base = __rt_get_run_argstart();
     if (base < 0)
         return NULL;
+    /* The active CRT argv slice is process-wide and already reflects the
+       current host `tcc -run ...` context, including nested runs. Reuse it
+       first so nested `-run tcc.c ... -run ...` keeps advancing through the
+       current slice instead of restarting from the original process command
+       line. */
+    run_argv = build_run_wargv_from_targv(__argc, __targv, base, &run_argc);
+    if (run_argv) {
+        *prun_argc = run_argc;
+        return run_argv;
+    }
     cmd_argv = run_command_line_to_argv_w(&cmd_argc);
     if (!cmd_argv || base >= cmd_argc)
         goto fail;
@@ -439,7 +502,7 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
     if (!argv_state.run_argv)
         return 1;
     run_targv_tls = &argv_state;
-    if (__tcc_atexit(restore_run_targv_atexit))
+    if (atexit(restore_run_targv_atexit))
         goto fail;
     __argc = run_argc;
     __targv = argv_state.run_argv;
@@ -451,7 +514,8 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
     run_ctors(__argc, __targv, env);
     ret = _tmain(__argc, __targv, env);
     run_dtors();
-    __tcc_run_on_exit(ret);
+    if (__run_on_exit)
+        __run_on_exit(ret);
     return ret;
 fail:
     run_targv_tls = NULL;
