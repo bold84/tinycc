@@ -88,6 +88,7 @@ endif
 
 # These tests run several snippets from the same file one by one
 60_errors_and_warnings.test : FLAGS += -dt
+139_arm64_errors.test : FLAGS += -dt
 96_nodata_wanted.test : FLAGS += -dt
 
 # Always generate certain .expects (don't put these in the GIT),

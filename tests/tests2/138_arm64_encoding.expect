@@ -19,7 +19,7 @@ ldr-str:
 f1e2d3c4b5a6978
 1122334455667788 99aabbccddeeff00
 ldp-stp:
-aaabbbbccccdddd 1111222233334444
+aaaabbbbccccdddd 1111222233334444
 cbz-cbnz:
 zero
 nonzero
