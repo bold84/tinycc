@@ -979,6 +979,7 @@ struct TCCState {
 
 #ifdef TCC_IS_NATIVE
     const char *run_main; /* entry for tcc_run() */
+    int run_arg_start; /* argv index for tcc -run relative to the host command line */
     void *run_ptr; /* runtime_memory */
     unsigned run_size; /* size of runtime_memory  */
     const char *run_stdin; /* custom stdin file for run_main */
