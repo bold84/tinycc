@@ -4,6 +4,7 @@
 #include <tchar.h>
 
 #include <windows.h>
+#include <excpt.h>
 #include <stdlib.h>
 #define __UNKNOWN_APP    0
 #define __CONSOLE_APP    1
@@ -29,9 +30,35 @@ int __cdecl __tgetmainargs(int *pargc, _TCHAR ***pargv, _TCHAR ***penv, int glob
 int __cdecl __getmainargs(int *pargc, char ***pargv, char ***penv, int globb, _startupinfo*);
 int __cdecl __wgetmainargs(int *pargc, wchar_t ***pargv, wchar_t ***penv, int globb, _startupinfo*);
 int __cdecl get_tenviron(_TCHAR ***penv);
+int __cdecl _XcptFilter(unsigned long, struct _EXCEPTION_POINTERS *);
 __attribute__((weak)) int __cdecl __rt_get_run_argstart(void);
 
 #include "crtinit.c"
+
+typedef struct run_targv_state {
+    int saved_argc;
+    _TCHAR **saved_argv;
+    int active;
+    struct run_targv_state *prev;
+} run_targv_state;
+
+static __declspec(thread) run_targv_state *run_targv_tls;
+
+static void restore_run_targv(run_targv_state *state)
+{
+    if (!state || !state->active)
+        return;
+    __argc = state->saved_argc;
+    __targv = state->saved_argv;
+    state->active = 0;
+    if (run_targv_tls == state)
+        run_targv_tls = state->prev;
+}
+
+void __tcc_cleanup_run_targv(void)
+{
+    restore_run_targv(run_targv_tls);
+}
 
 static int select_run_arg_start_t(int base, const _TCHAR *arg0, int full_argc, _TCHAR **full_argv)
 {
@@ -121,8 +148,7 @@ int _twinstart(void)
 
 int _runtwinmain(int argc, /* as tcc passed in */ char **argv)
 {
-    int saved_argc = __argc;
-    _TCHAR **saved_argv = __targv;
+    run_targv_state argv_state = { __argc, __targv, 0, NULL };
     int ret;
     int run_arg_start = -1;
 #ifdef UNICODE
@@ -155,8 +181,10 @@ int _runtwinmain(int argc, /* as tcc passed in */ char **argv)
             __argc = argc, __targv = argv;
     }
 #endif
+    argv_state.prev = run_targv_tls;
+    run_targv_tls = &argv_state;
+    argv_state.active = 1;
     ret = go_winmain(__argc > 1 ? __targv[1] : NULL);
-    __argc = saved_argc;
-    __targv = saved_argv;
+    __tcc_cleanup_run_targv();
     return ret;
 }

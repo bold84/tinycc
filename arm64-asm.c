@@ -826,6 +826,15 @@ static int is_valid_movw_imm(int64_t val)
     return 0;
 }
 
+static int is_valid_movw_shift(int shift, int is_64bit)
+{
+    if (shift < 0 || (shift & 15))
+        return 0;
+    if (shift > (is_64bit ? 48 : 16))
+        return 0;
+    return 1;
+}
+
 static int arm64_memory_is_base_only(const SValue *sv)
 {
     int r;
@@ -1279,8 +1288,7 @@ static void asm_data_proc(TCCState *s1, int token)
             opcode = ARM64_EOR_REG;
             break;
         case TOK_ASM_mul:
-        case TOK_ASM_muls:
-            opcode = token == TOK_ASM_mul ? ARM64_MUL_REG : ARM64_MULS_REG;
+            opcode = ARM64_MUL_REG;
             break;
         default:
             tcc_error("unsupported data processing instruction");
@@ -1334,15 +1342,16 @@ static void asm_data_proc(TCCState *s1, int token)
                 return;
             }
             rm = op3.reg;
-            if (is_64bit != !!(op2.reg_type & REG_X) || is_64bit != !!(op3.reg_type & REG_X))
+            if (is_64bit != !!(op2.reg_type & REG_X) || is_64bit != !!(op3.reg_type & REG_X)) {
                 tcc_error("mismatched register widths");
+                return;
+            }
             gen_dp_reg(opcode, rd, rn, rm, is_64bit);
         }
     } else if (op2.type & OP_IM) {
         tcc_error("missing source register for immediate form");
     } else {
-        is_64bit = (op1.reg_type & REG_X);
-        gen_mov_reg(rd, rn, is_64bit);
+        tcc_error("missing third operand");
     }
 }
 
@@ -1665,18 +1674,37 @@ static void asm_move_wide(TCCState *s1, int token)
     if (tok == ',') next();
     parse_operand(s1, &op2);
 
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (!(op2.type & OP_IM) || op2.e.sym) {
+        tcc_error("expected immediate in second operand");
+        return;
+    }
+
     rd = op1.reg;
     is_64bit = (op1.reg_type & REG_X);
-    imm = op2.e.v & 0xFFFF;
+    if ((uint64_t)op2.e.v > 0xFFFF) {
+        tcc_error("move wide immediate out of range");
+        return;
+    }
+    imm = op2.e.v;
 
     if (tok == ',') {
         next();
-        if (tok == TOK_ASM_lsl) {
-            next();
-            if (tok == '#') next();
-            asm_expr(s1, &op2.e);
-            shift = (int)op2.e.v / 16;
+        if (tok != TOK_ASM_lsl) {
+            tcc_error("move wide shift must use lsl");
+            return;
         }
+        next();
+        if (tok == '#') next();
+        asm_expr(s1, &op2.e);
+        if (op2.e.sym || !is_valid_movw_shift((int)op2.e.v, is_64bit)) {
+            tcc_error("move wide shift out of range");
+            return;
+        }
+        shift = (int)op2.e.v / 16;
     }
 
     switch (token) {
@@ -1707,7 +1735,6 @@ ST_FUNC void asm_opcode(TCCState *s1, int opcode)
         case TOK_ASM_orr:
         case TOK_ASM_eor:
         case TOK_ASM_mul:
-        case TOK_ASM_muls:
             asm_data_proc(s1, opcode);
             break;
 
