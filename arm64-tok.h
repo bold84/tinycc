@@ -573,7 +573,7 @@
 #define ARM64_SUB_REG     0x4B000000U
 #define ARM64_SUBS_REG    0x6B000000U
 #define ARM64_AND_REG     0x0A000000U
-#define ARM64_ANDS_REG    0x2A000000U
+#define ARM64_ANDS_REG    0x6A000000U
 #define ARM64_ORR_REG     0x2A000000U
 #define ARM64_EOR_REG     0x4A000000U
 #define ARM64_MUL_REG     0x1B000000U  /* Base opcode, Rm/Rn/Rd must be filled in */
@@ -730,8 +730,11 @@
 #define ARM64_ADR         0x10000000U
 
 /* Logical immediate */
-#define ARM64_ORR_IMM     0x320003E0U
 #define ARM64_AND_IMM     0x12000000U
+#define ARM64_ORR_IMM_BASE 0x32000000U
+#define ARM64_EOR_IMM     0x52000000U
+#define ARM64_ANDS_IMM    0x72000000U
+#define ARM64_ORR_IMM     0x320003E0U  /* ORR immediate alias with Rn = XZR/WZR */
 
 /* ------------------------------------------------------------------ */
 /* ARM64 instruction encoding helper macros                           */
@@ -755,6 +758,7 @@
 #define ARM64_SIZE(s)   (((uint32_t)(s) & 3) << 30)
 #define ARM64_SF(s)     (((uint32_t)(s) & 1) << 31)
 #define ARM64_S(v)      (((uint32_t)(v) & 1) << 29)
+#define ARM64_N(v)      (((uint32_t)(v) & 1) << 22)
 #define ARM64_SH(v)     (((uint32_t)(v) & 1) << 22)
 
 /* Condition code encoding */

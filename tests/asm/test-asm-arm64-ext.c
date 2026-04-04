@@ -7,6 +7,21 @@
 #include <stdint.h>
 #include <assert.h>
 
+struct pair64 {
+    uint64_t a;
+    uint64_t b;
+};
+
+static int arm64_symbol_target(void)
+{
+    return 7;
+}
+
+static void test_symbolic_address_constraint_compile_only(void)
+{
+    asm volatile("" : : "S"(arm64_symbol_target));
+}
+
 /* Test 1: Basic output operand */
 void test_basic_output(void)
 {
@@ -40,7 +55,7 @@ void test_memory_load(void)
 {
     int x = 42;
     int y;
-    asm("ldr %0, [%1]" : "=r"(y) : "r"(&x));
+    asm("ldr %w0, [%1]" : "=r"(y) : "r"(&x));
     assert(y == 42);
     printf("Test 4 (memory load): PASSED\n");
 }
@@ -50,7 +65,7 @@ void test_memory_store(void)
 {
     int x;
     int val = 123;
-    asm("str %1, [%0]" : : "r"(&x), "r"(val));
+    asm("str %w1, [%0]" : : "r"(&x), "r"(val));
     assert(x == 123);
     printf("Test 5 (memory store): PASSED\n");
 }
@@ -99,14 +114,14 @@ void test_early_clobber(void)
     printf("Test 9 (early clobber): PASSED\n");
 }
 
-/* Test 10: 32-bit register (w register) */
+/* Test 10: 32-bit register modifier */
 void test_w_register(void)
 {
     uint32_t x = 100;
     uint32_t y;
-    asm("add %w0, %w1, #50" : "=w"(y) : "w"(x));
+    asm("add %w0, %w1, #50" : "=r"(y) : "r"(x));
     assert(y == 150);
-    printf("Test 10 (w register): PASSED\n");
+    printf("Test 10 (w register modifier): PASSED\n");
 }
 
 /* Test 11: Immediate constraint 'I' (12-bit immediate) */
@@ -204,6 +219,145 @@ void test_bitwise_ops(void)
     printf("Test 20 (bitwise ops): SKIPPED\n");
 }
 
+/* Test 21: Register shift operands */
+void test_register_shift_operands(void)
+{
+    uint64_t val = 3;
+    uint64_t amount = 4;
+    uint64_t shifted;
+    uint64_t rotated;
+
+    asm("lsl %0, %1, %2" : "=r"(shifted) : "r"(val), "r"(amount));
+    asm("ror %0, %1, %2" : "=r"(rotated)
+        : "r"(0x0123456789abcdefULL), "r"(8ULL));
+    assert(shifted == 48);
+    assert(rotated == 0xef0123456789abcdULL);
+    printf("Test 21 (register shifts): PASSED\n");
+}
+
+/* Test 22: ROR immediate alias of EXTR */
+void test_ror_immediate(void)
+{
+    uint64_t rotated;
+
+    asm("ror %0, %1, #8" : "=r"(rotated) : "r"(0x0123456789abcdefULL));
+    assert(rotated == 0xef0123456789abcdULL);
+    printf("Test 22 (ror immediate): PASSED\n");
+}
+
+/* Test 23: FP/SIMD register constraint and modifier */
+void test_fp_register_operand(void)
+{
+    double x = 3.5;
+    double y;
+
+    asm("ldr %d0, [%1]" : "=w"(y) : "r"(&x));
+    assert(y == x);
+    printf("Test 23 (fp register operand): PASSED\n");
+}
+
+/* Test 24: Zero constraint */
+void test_zero_constraint(void)
+{
+    uint64_t x = 41;
+    uint64_t y;
+
+    asm("add %0, %1, %x2" : "=r"(y) : "r"(x), "Z"(0));
+    assert(y == x);
+    printf("Test 24 (Z constraint): PASSED\n");
+}
+
+/* Test 25: 32-bit logical immediate constraint */
+void test_logical_imm32_constraint(void)
+{
+    uint32_t y;
+
+    asm("orr %w0, wzr, %1" : "=r"(y) : "K"(0xff));
+    assert(y == 0xff);
+    printf("Test 25 (K constraint): PASSED\n");
+}
+
+/* Test 26: 64-bit logical immediate constraint */
+void test_logical_imm64_constraint(void)
+{
+    uint64_t y;
+
+    asm("orr %0, xzr, %1" : "=r"(y) : "L"(0xff00ff00ff00ff00ULL));
+    assert(y == 0xff00ff00ff00ff00ULL);
+    printf("Test 26 (L constraint): PASSED\n");
+}
+
+/* Test 27: 32-bit MOV pseudo immediate constraint */
+void test_mov_imm32_constraint(void)
+{
+    uint32_t y;
+
+    asm("mov %w0, %1" : "=r"(y) : "M"(0x1234));
+    assert(y == 0x1234);
+    printf("Test 27 (M constraint): PASSED\n");
+}
+
+/* Test 28: 64-bit MOV pseudo immediate constraint */
+void test_mov_imm64_constraint(void)
+{
+    uint64_t y;
+
+    asm("mov %0, %1" : "=r"(y) : "N"(0x12340000ULL));
+    assert(y == 0x12340000ULL);
+    printf("Test 28 (N constraint): PASSED\n");
+}
+
+/* Test 29: x FP/SIMD register constraint */
+void test_x_constraint_fp(void)
+{
+    double x = 6.25;
+    double y;
+
+    asm("ldr %d0, [%1]" : "=x"(y) : "r"(&x));
+    assert(y == x);
+    printf("Test 29 (x constraint): PASSED\n");
+}
+
+/* Test 30: y FP/SIMD register constraint */
+void test_y_constraint_fp(void)
+{
+    double x = 7.25;
+    double y;
+
+    asm("ldr %d0, [%1]" : "=y"(y) : "r"(&x));
+    assert(y == x);
+    printf("Test 30 (y constraint): PASSED\n");
+}
+
+/* Test 31: Q memory constraint */
+static int arm64_q_load(int *ptr)
+{
+    int y;
+
+    asm("ldr %w0, %1" : "=r"(y) : "Q"(*ptr));
+    return y;
+}
+
+void test_q_memory_constraint(void)
+{
+    int x = 91;
+    assert(arm64_q_load(&x) == 91);
+    printf("Test 31 (Q constraint): PASSED\n");
+}
+
+/* Test 32: Ump pair-memory constraint */
+void test_ump_memory_constraint(void)
+{
+    struct pair64 pair = { 0x1122334455667788ULL, 0x99aabbccddeeff00ULL };
+    uint64_t a;
+    uint64_t b;
+
+    asm("ldp %0, %1, %2" : "=r"(a), "=r"(b) : "Ump"(pair));
+    assert(a == pair.a);
+    assert(b == pair.b);
+    printf("Test 32 (Ump constraint): PASSED\n");
+}
+
 int main(void)
 {
     printf("ARM64 Extended Inline Assembly Tests\n");
@@ -229,6 +383,19 @@ int main(void)
     test_cc_clobber();
     test_large_immediate();
     test_bitwise_ops();
+    test_register_shift_operands();
+    test_ror_immediate();
+    test_fp_register_operand();
+    test_zero_constraint();
+    test_logical_imm32_constraint();
+    test_logical_imm64_constraint();
+    test_mov_imm32_constraint();
+    test_mov_imm64_constraint();
+    test_x_constraint_fp();
+    test_y_constraint_fp();
+    test_q_memory_constraint();
+    test_ump_memory_constraint();
+    test_symbolic_address_constraint_compile_only();
     
     printf("\n=====================================\n");
     printf("All tests PASSED!\n");

@@ -54,6 +54,10 @@ ifneq (,$(filter arm% riscv%,$(ARCH)))
  SKIP += 99_fastcall.test
  SKIP += 127_asm_goto.test
 endif
+ifeq (,$(filter arm64 aarch64,$(ARCH)))
+ SKIP += 138_arm64_encoding.test
+ SKIP += 139_arm64_errors.test
+endif
 ifneq (,$(findstring win32,$(CROSS_TARGET)))
  SKIP += 106_versym.test
  SKIP += 114_bound_signal.test
