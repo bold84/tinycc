@@ -339,7 +339,12 @@ int main(int argc, char **argv)
 #include <tcclib.h>
 
 #ifdef _WIN32
-void __stdcall Sleep(unsigned int milliseconds);
+# ifdef __i386__
+#  define LIBTCC_TEST_WINAPI __attribute__((__stdcall__))
+# else
+#  define LIBTCC_TEST_WINAPI
+# endif
+void LIBTCC_TEST_WINAPI Sleep(unsigned int milliseconds);
 #else
 unsigned int sleep(unsigned int seconds);
 #endif

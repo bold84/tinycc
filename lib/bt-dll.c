@@ -76,16 +76,11 @@ REDIR_WRAP(void, __bt_exit, (rt_context *p),
 REDIR_WRAP(int, __bt_backtrace, (rt_frame *f, const char *msg),
            (rt_frame *, const char *), (f, msg))
 
-void * __bound_ptr_add(void *p, size_t offset)
-{
-    typedef void *(*fn_t)(void *, size_t);
-    return ((fn_t)all_ptrs.__bound_ptr_add)(p, offset);
-}
-
 #define REDIR_PTR_INDIR(name) \
     REDIR_WRAP(void *, name, (void *p, size_t offset), \
                (void *, size_t), (p, offset))
 
+REDIR_PTR_INDIR(__bound_ptr_add)
 REDIR_PTR_INDIR(__bound_ptr_indir1)
 REDIR_PTR_INDIR(__bound_ptr_indir2)
 REDIR_PTR_INDIR(__bound_ptr_indir4)
