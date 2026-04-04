@@ -297,7 +297,6 @@
 
 /* Multiply/divide */
  DEF_ASM(mul)
- DEF_ASM(muls)
  DEF_ASM(madd)
  DEF_ASM(msub)
  DEF_ASM(smaddl)
@@ -577,7 +576,6 @@
 #define ARM64_ORR_REG     0x2A000000U
 #define ARM64_EOR_REG     0x4A000000U
 #define ARM64_MUL_REG     0x1B000000U  /* Base opcode, Rm/Rn/Rd must be filled in */
-#define ARM64_MULS_REG    0x3B000000U  /* Base opcode, Rm/Rn/Rd must be filled in */
 
 /* Move wide immediate */
 #define ARM64_MOVZ        0x52800000U

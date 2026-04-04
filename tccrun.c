@@ -266,6 +266,17 @@ static void rt_flush_target_io(void)
     if (fn)
         fn(NULL);
 }
+
+static void rt_cleanup_run_targv(TCCState *s)
+{
+    void (*cleanup)(void);
+
+    if (!s)
+        return;
+    cleanup = (void (*)(void))tcc_get_symbol(s, "__tcc_cleanup_run_targv");
+    if (cleanup)
+        cleanup();
+}
 #endif
 
 /* launch the compiled program with the given arguments */
@@ -698,6 +709,9 @@ static void rt_exit(rt_frame *f, int code)
             if (p)
                 ((void (*)(void))p)();
         }
+#endif
+#ifdef _WIN32
+        rt_cleanup_run_targv(s);
 #endif
 #if defined(_WIN64) && defined(__aarch64__) && !defined(CONFIG_TCC_BACKTRACE_ONLY)
         rt_restore_context_from_jmpbuf(s->run_jb, code);
@@ -1577,6 +1591,7 @@ static long __stdcall cpu_exception_handler(EXCEPTION_POINTERS *ex_info)
                 ((void (*)(void))p)();
         }
 #endif
+        rt_cleanup_run_targv(s);
         rt_restore_context_from_jmpbuf(s->run_jb, 255);
     }
 #endif
