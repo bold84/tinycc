@@ -43,6 +43,34 @@ int main(void)
     return 0;
 }
 
+#elif defined test_missing_third_operand
+int main(void)
+{
+    __asm__("add x0, x1");
+    return 0;
+}
+
+#elif defined test_movz_imm_range
+int main(void)
+{
+    __asm__("movz x0, #0x10000");
+    return 0;
+}
+
+#elif defined test_movz_shift_range
+int main(void)
+{
+    __asm__("movz x0, #1, lsl #8");
+    return 0;
+}
+
+#elif defined test_invalid_muls
+int main(void)
+{
+    __asm__("muls x0, x1, x2");
+    return 0;
+}
+
 #elif defined test_extended_inline_asm
 int main(void)
 {

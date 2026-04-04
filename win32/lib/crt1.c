@@ -5,6 +5,7 @@
 #include <tchar.h>
 
 #include <windows.h>
+#include <excpt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,7 @@ int __cdecl __tgetmainargs(int *pargc, _TCHAR ***pargv, _TCHAR ***penv, int glob
 int __cdecl __getmainargs(int *pargc, char ***pargv, char ***penv, int globb, _startupinfo*);
 int __cdecl __wgetmainargs(int *pargc, wchar_t ***pargv, wchar_t ***penv, int globb, _startupinfo*);
 int __cdecl get_tenviron(_TCHAR ***penv);
+int __cdecl _XcptFilter(unsigned long, struct _EXCEPTION_POINTERS *);
 void __cdecl __set_app_type(int apptype);
 unsigned int __cdecl _controlfp(unsigned int new_value, unsigned int mask);
 extern int _tmain(int argc, _TCHAR * argv[], _TCHAR * env[]);
@@ -120,6 +122,7 @@ typedef struct run_targv_state {
     _TCHAR **saved_argv;
     _TCHAR **run_argv;
     int active;
+    struct run_targv_state *prev;
 } run_targv_state;
 
 static __declspec(thread) run_targv_state *run_targv_tls;
@@ -457,11 +460,8 @@ fail:
 }
 #endif
 
-static void restore_run_targv(int ret, void *opaque)
+static void restore_run_targv(run_targv_state *state)
 {
-    run_targv_state *state = (run_targv_state *)opaque;
-
-    (void)ret;
     if (!state || !state->active)
         return;
     __argc = state->saved_argc;
@@ -470,12 +470,12 @@ static void restore_run_targv(int ret, void *opaque)
     state->run_argv = NULL;
     state->active = 0;
     if (run_targv_tls == state)
-        run_targv_tls = NULL;
+        run_targv_tls = state->prev;
 }
 
-static void restore_run_targv_atexit(void)
+void __tcc_cleanup_run_targv(void)
 {
-    restore_run_targv(0, run_targv_tls);
+    restore_run_targv(run_targv_tls);
 }
 
 int _runtmain(int argc, /* as tcc passed in */ char **argv)
@@ -483,7 +483,7 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
     int ret;
     int run_argc = argc;
     _TCHAR **env = run_get_tenviron();
-    run_targv_state argv_state = { __argc, __targv, NULL, 0 };
+    run_targv_state argv_state = { __argc, __targv, NULL, 0, NULL };
     wchar_t **run_wargv = NULL;
 
     run_wargv = build_run_wargv(&run_argc);
@@ -501,9 +501,8 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
     }
     if (!argv_state.run_argv)
         return 1;
+    argv_state.prev = run_targv_tls;
     run_targv_tls = &argv_state;
-    if (atexit(restore_run_targv_atexit))
-        goto fail;
     __argc = run_argc;
     __targv = argv_state.run_argv;
     argv_state.active = 1;
@@ -516,11 +515,8 @@ int _runtmain(int argc, /* as tcc passed in */ char **argv)
     run_dtors();
     if (__run_on_exit)
         __run_on_exit(ret);
+    __tcc_cleanup_run_targv();
     return ret;
-fail:
-    run_targv_tls = NULL;
-    free_run_targv(argv_state.run_argv);
-    return 1;
 }
 
 // =============================================
