@@ -223,4 +223,11 @@ exit /B %ERRORLEVEL%
 .\tcc -B. -m%1 -c ../lib/bt-log.c -o lib/%2bt-log.o
 .\tcc -B. -m%1 -c ../lib/bt-dll.c -o lib/%2bt-dll.o
 .\tcc -B. -m%1 -c ../lib/runmain.c -o lib/%2runmain.o
+@if "%~2"=="" (
+  @rem Keep the repo-root runtime helpers in sync for native -run and tests.
+  if exist tcc.exe copy>nul /y tcc.exe ..\tcc.exe
+  if exist libtcc.dll copy>nul /y libtcc.dll ..\libtcc.dll
+  copy>nul /y lib\libtcc1.a ..\libtcc1.a
+  for %%f in (bcheck bt-dll bt-exe bt-log runmain) do @copy>nul /y lib\%%f.o ..\%%f.o
+)
 exit /B %ERRORLEVEL%
