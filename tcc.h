@@ -505,6 +505,7 @@ struct SymAttr {
     unsigned short
     aligned     : 5, /* alignment as log2+1 (0 == unspecified) */
     packed      : 1,
+    typedef_align : 1, /* alignment came from a typedef'ed type */
     weak        : 1,
     visibility  : 2,
     dllexport   : 1,
@@ -512,7 +513,7 @@ struct SymAttr {
     dllimport   : 1,
     addrtaken   : 1,
     nodebug     : 1,
-    xxxx        : 2; /* not used */
+    xxxx        : 1; /* not used */
 };
 
 /* function attributes or temporary attributes for parsing */
@@ -592,7 +593,7 @@ typedef struct Section {
 typedef struct DLLReference {
     int level;
     void *handle;
-    unsigned char found, index;
+    unsigned char found, index, process_scoped;
     char name[1];
 } DLLReference;
 
@@ -952,6 +953,7 @@ struct TCCState {
 # if defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
     Section *uw_pdata;
     int uw_sym;
+    int uw_xsym;
     unsigned uw_offs;
 # endif
 #endif

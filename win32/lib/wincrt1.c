@@ -16,21 +16,25 @@ void _controlfp(unsigned a, unsigned b);
 #define __tgetmainargs __wgetmainargs
 #define _twinstart _wwinstart
 #define _runtwinmain _runwwinmain
+#define get_tenviron _get_wenviron
 int APIENTRY wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int);
 #else
 #define __tgetmainargs __getmainargs
 #define _twinstart _winstart
 #define _runtwinmain _runwinmain
+#define get_tenviron _get_environ
 #endif
 
 typedef struct { int newmode; } _startupinfo;
 int __cdecl __tgetmainargs(int *pargc, _TCHAR ***pargv, _TCHAR ***penv, int globb, _startupinfo*);
+int __cdecl get_tenviron(_TCHAR ***penv);
 
 #include "crtinit.c"
 
 static int go_winmain(TCHAR *arg1)
 {
     STARTUPINFO si;
+    _TCHAR **env = NULL;
     _TCHAR *szCmd, *p;
     int fShow;
     int retval;
@@ -51,7 +55,8 @@ static int go_winmain(TCHAR *arg1)
 #if defined __i386__ || defined __x86_64__
     _controlfp(0x10000, 0x30000);
 #endif
-    run_ctors(__argc, __targv, _tenviron);
+    get_tenviron(&env);
+    run_ctors(__argc, __targv, env);
     retval = _tWinMain(GetModuleHandle(NULL), NULL, szCmd, fShow);
     run_dtors();
     return retval;
@@ -67,7 +72,7 @@ int _twinstart(void)
     _startupinfo start_info_con = {0};
     SetUnhandledExceptionFilter(catch_sig);
     __set_app_type(__GUI_APP);
-    __tgetmainargs(&__argc, &__targv, &_tenviron, 0, &start_info_con);
+    __tgetmainargs(&__argc, &__targv, NULL, 0, &start_info_con);
     exit(go_winmain(__argc > 1 ? __targv[1] : NULL));
 }
 
@@ -75,7 +80,7 @@ int _runtwinmain(int argc, /* as tcc passed in */ char **argv)
 {
 #ifdef UNICODE
     _startupinfo start_info = {0};
-    __tgetmainargs(&__argc, &__targv, &_tenviron, 0, &start_info);
+    __tgetmainargs(&__argc, &__targv, NULL, 0, &start_info);
     /* may be wrong when tcc has received wildcards (*.c) */
     if (argc < __argc)
         __targv += __argc - argc, __argc = argc;
