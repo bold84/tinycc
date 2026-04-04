@@ -1032,11 +1032,14 @@ static int tcc_assemble_internal(TCCState *s1, int do_preprocess, int global)
         tcc_debug_line(s1);
         parse_flags |= PARSE_FLAG_LINEFEED; /* XXX: suppress that hack */
     redo:
+#if !defined(TCC_TARGET_ARM64)
         if (tok == '#') {
             /* horrible gas comment */
             while (tok != TOK_LINEFEED)
                 next();
-        } else if (tok >= TOK_ASMDIR_FIRST && tok <= TOK_ASMDIR_LAST) {
+        } else
+#endif
+        if (tok >= TOK_ASMDIR_FIRST && tok <= TOK_ASMDIR_LAST) {
             asm_parse_directive(s1, global);
         } else if (tok == TOK_PPNUM) {
             const char *p;

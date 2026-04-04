@@ -3,7 +3,8 @@
  *  ARM64 (AArch64) assembler for TCC
  *
  *  Based on ARM64 Architecture Reference Manual
- *  Supports AArch64 assembler parsing plus basic inline asm strings
+ *  Supports AArch64 assembler parsing and extended inline asm
+ *  with operands, constraints, and clobbers.
  */
 
 #ifdef TARGET_DEFS_ONLY
@@ -35,22 +36,55 @@ ST_FUNC void gen_le32(int c);
 /* Operand types */
 enum {
     OPT_REG,
-    OPT_VREG,
     OPT_IM,
-    OPT_IM12,
     OPT_ADDR,
     OPT_COND,
-    OPT_SHIFT,
-    OPT_REGSET,
 };
 
 #define OP_REG     (1 << OPT_REG)
-#define OP_VREG    (1 << OPT_VREG)
 #define OP_IM      (1 << OPT_IM)
 #define OP_ADDR    (1 << OPT_ADDR)
 #define OP_COND    (1 << OPT_COND)
-#define OP_SHIFT   (1 << OPT_SHIFT)
-#define OP_REGSET  (1 << OPT_REGSET)
+
+/* Register allocation masks */
+#define REG_OUT_MASK 0x01
+#define REG_IN_MASK  0x02
+
+#define is_reg_allocated(reg) (regs_allocated[reg] & reg_mask)
+
+/* ARM64 register constants */
+#define TREG_X0  0
+#define TREG_X1  1
+#define TREG_X2  2
+#define TREG_X3  3
+#define TREG_X4  4
+#define TREG_X5  5
+#define TREG_X6  6
+#define TREG_X7  7
+#define TREG_X8  8
+#define TREG_X9  9
+#define TREG_X10 10
+#define TREG_X11 11
+#define TREG_X12 12
+#define TREG_X13 13
+#define TREG_X14 14
+#define TREG_X15 15
+#define TREG_X16 16
+#define TREG_X17 17
+#define TREG_X18 18
+#define TREG_X19 19
+#define TREG_X20 20
+#define TREG_X21 21
+#define TREG_X22 22
+#define TREG_X23 23
+#define TREG_X24 24
+#define TREG_X25 25
+#define TREG_X26 26
+#define TREG_X27 27
+#define TREG_X28 28
+#define TREG_X29 29
+#define TREG_X30 30
+#define TREG_SP  31
 
 typedef struct Operand {
     uint32_t type;
@@ -257,9 +291,31 @@ static void parse_operand(TCCState *s1, Operand *op)
     /* Immediate or address expression */
     if (tok == '#' || tok == ':' || tok == '@' || tok == '$') {
         next();
+        asm_expr(s1, &op->e);
+        op->type = OP_IM;
+    } else if (tok >= TOK_IDENT) {
+        tcc_error("invalid operand '%s'", get_tok_str(tok, &tokc));
+        op->type = OP_IM;
+    } else {
+        asm_expr(s1, &op->e);
+        op->type = OP_IM;
     }
-    asm_expr(s1, &op->e);
+}
+
+/* Parse a symbolic/immediate expression operand used by branch instructions. */
+static void parse_expr_operand(TCCState *s1, Operand *op)
+{
     op->type = OP_IM;
+    op->reg = -1;
+    op->reg2 = -1;
+    op->reg_type = 0;
+    op->shift = 0;
+    op->addr_mode = ADDR_OFF;
+    op->reg_tok = 0;
+
+    if (tok == '#' || tok == ':' || tok == '@' || tok == '$')
+        next();
+    asm_expr(s1, &op->e);
 }
 
 /* Parse address operand in brackets [xn, ...] */
@@ -277,17 +333,19 @@ static void parse_addr_operand(TCCState *s1, Operand *op)
 
     skip('[');
     reg = arm64_parse_regvar(tok);
-    if (reg >= 0 && reg < 32) {
-        op->reg = reg;
-        op->reg_tok = tok;
+    if (reg < 0 || reg >= 32) {
+        tcc_error("invalid register in address operand");
+        return;
+    }
+    op->reg = reg;
+    op->reg_tok = tok;
+    next();
+    /* Check for offset */
+    if (tok == ',') {
         next();
-        /* Check for offset */
-        if (tok == ',') {
+        if (tok == '#' || tok == '@' || tok == '$')
             next();
-            if (tok == '#' || tok == '@' || tok == '$')
-                next();
-            asm_expr(s1, &op->e);
-        }
+        asm_expr(s1, &op->e);
     }
     skip(']');
     if (tok == '!') {
@@ -303,39 +361,34 @@ static void parse_addr_operand(TCCState *s1, Operand *op)
 }
 
 /* Generate MOVZ instruction */
-static void gen_movz(int rd, uint16_t imm, int shift, int is_64bit)
+/* Generate MOVZ/MOVN/MOVK with base opcode */
+static void gen_mov_with_base(int rd, uint16_t imm, int shift, 
+                              int is_64bit, uint32_t base_opcode)
 {
-    uint32_t instr = 0x52800000;
+    uint32_t instr = base_opcode;
     if (is_64bit) instr |= (1 << 31);
     /* shift is halfword index (0-3), encode as LSL #0/16/32/48 */
     instr |= ((shift & 3) << 21) & 0x00600000;
     instr |= (imm << 5) & 0x00FFFFE0;
     instr |= rd & 0x1F;
     emit_instr32(instr);
+}
+
+static void gen_movz(int rd, uint16_t imm, int shift, int is_64bit)
+{
+    gen_mov_with_base(rd, imm, shift, is_64bit, 0x52800000);
 }
 
 /* Generate MOVN instruction */
 static void gen_movn(int rd, uint16_t imm, int shift, int is_64bit)
 {
-    uint32_t instr = 0x12800000;
-    if (is_64bit) instr |= (1 << 31);
-    /* shift is halfword index (0-3), encode as LSL #0/16/32/48 */
-    instr |= ((shift & 3) << 21) & 0x00600000;
-    instr |= (imm << 5) & 0x00FFFFE0;
-    instr |= rd & 0x1F;
-    emit_instr32(instr);
+    gen_mov_with_base(rd, imm, shift, is_64bit, 0x12800000);
 }
 
 /* Generate MOVK instruction */
 static void gen_movk(int rd, uint16_t imm, int shift, int is_64bit)
 {
-    uint32_t instr = 0xF2800000;
-    if (is_64bit) instr |= (1 << 31);
-    /* shift is halfword index (0-3), encode as LSL #0/16/32/48 */
-    instr |= ((shift & 3) << 21) & 0x00600000;
-    instr |= (imm << 5) & 0x00FFFFE0;
-    instr |= rd & 0x1F;
-    emit_instr32(instr);
+    gen_mov_with_base(rd, imm, shift, is_64bit, 0xF2800000);
 }
 
 /* Generate ADD (immediate) */
@@ -438,19 +491,23 @@ static void gen_ldst_pair(uint32_t base_opcode, int rt, int rt2, int rn,
 }
 
 /* Generate B (branch) */
-static void gen_b(int32_t offset)
+/* Generate B/BL with base opcode */
+static void gen_b_or_bl(int32_t offset, uint32_t base_opcode)
 {
-    uint32_t instr = 0x14000000;
+    uint32_t instr = base_opcode;
     instr |= ((offset >> 2) & 0x03FFFFFF);
     emit_instr32(instr);
+}
+
+static void gen_b(int32_t offset)
+{
+    gen_b_or_bl(offset, 0x14000000);
 }
 
 /* Generate BL (branch with link) */
 static void gen_bl(int32_t offset)
 {
-    uint32_t instr = 0x94000000;
-    instr |= ((offset >> 2) & 0x03FFFFFF);
-    emit_instr32(instr);
+    gen_b_or_bl(offset, 0x94000000);
 }
 
 /* Generate BR (branch to register) */
@@ -487,23 +544,25 @@ static void gen_b_cond(int cond, int32_t offset)
 }
 
 /* Generate CBZ */
-static void gen_cbz(int rt, int32_t offset, int is_64bit)
+/* Generate CBZ/CBNZ with base opcode */
+static void gen_cbz_or_cbnz(int rt, int32_t offset, int is_64bit, uint32_t base_opcode)
 {
-    uint32_t instr = 0x34000000;
+    uint32_t instr = base_opcode;
     if (is_64bit) instr |= (1 << 31);
     instr |= ((offset >> 2) & 0x7FFFF) << 5;
     instr |= rt & 0x1F;
     emit_instr32(instr);
 }
 
+static void gen_cbz(int rt, int32_t offset, int is_64bit)
+{
+    gen_cbz_or_cbnz(rt, offset, is_64bit, 0x34000000);
+}
+
 /* Generate CBNZ */
 static void gen_cbnz(int rt, int32_t offset, int is_64bit)
 {
-    uint32_t instr = 0x35000000;
-    if (is_64bit) instr |= (1 << 31);
-    instr |= ((offset >> 2) & 0x7FFFF) << 5;
-    instr |= rt & 0x1F;
-    emit_instr32(instr);
+    gen_cbz_or_cbnz(rt, offset, is_64bit, 0x35000000);
 }
 
 /* Generate MOV (register) - ORR with zero register */
@@ -514,6 +573,115 @@ static void gen_mov_reg(int rd, int rm, int is_64bit)
     instr |= (rm & 0x1F) << 16;
     instr |= rd & 0x1F;
     emit_instr32(instr);
+}
+
+/* return the constraint priority (we allocate first the lowest
+   numbered constraints) */
+static inline int constraint_priority(const char *str)
+{
+    int priority, c, pr;
+
+    priority = 0;
+    for (;;) {
+        c = *str++;
+        if (c == '\0')
+            break;
+        switch (c) {
+        case '=':
+        case '+':
+        case '&':
+            continue;
+        case 'r':
+            pr = 1;
+            break;
+        case 'w':
+            pr = 2;
+            break;
+        case 'f':
+        case 'x':
+            pr = 3;
+            break;
+        case 'm':
+            pr = 4;
+            break;
+        case 'i':
+            pr = 5;
+            break;
+        case 'I':
+        case 'J':
+        case 'K':
+        case 'L':
+            pr = 6;
+            break;
+        case 'n':
+            pr = 7;
+            break;
+        case 'g':
+            pr = 8;
+            break;
+        default:
+            tcc_warning("unknown constraint '%c'", c);
+            pr = 0;
+            break;
+        }
+        if (pr > priority)
+            priority = pr;
+    }
+    return priority;
+}
+
+static const char *skip_constraint_modifiers(const char *p)
+{
+    while (*p == '=' || *p == '&' || *p == '+' || *p == '%')
+        p++;
+    return p;
+}
+
+static int is_valid_add_imm(int64_t val)
+{
+    return val >= 0 && val <= 4095;
+}
+
+static int is_valid_logical_imm(int64_t val, int bits)
+{
+    uint64_t uval = val;
+    int i, shift;
+    
+    if (uval == 0)
+        return 1;
+    
+    for (shift = 0; shift < bits; shift += 2) {
+        uint64_t mask = ((uint64_t)1 << (bits - shift)) - 1;
+        if ((uval & mask) == uval)
+            return 1;
+    }
+    
+    for (i = 0; i < 6; i++) {
+        uint64_t pattern = uval & 0x3F;
+        if (pattern == 0 || pattern == 0x3F) {
+            uint64_t shifted = uval >> (i * 2);
+            if ((shifted & ((uint64_t)1 << (bits - i * 2)) - 1) == 0)
+                return 1;
+        }
+    }
+    
+    return 0;
+}
+
+static int is_valid_movw_imm(int64_t val)
+{
+    uint64_t uval = (uint64_t)val;
+    
+    if (uval <= 0xFFFF)
+        return 1;
+    if (uval >= 0xFFFF0000 && (uval & 0xFFFF) == 0)
+        return 1;
+    if (uval >= 0xFFFF00000000ULL && (uval & 0xFFFFFFFFULL) == 0)
+        return 1;
+    if ((uval & 0xFFFFFFFF00000000ULL) == 0)
+        return 1;
+    
+    return 0;
 }
 
 static int operand_is_sp(const Operand *op)
@@ -586,42 +754,44 @@ static void gen_shift(int rd, int rn, int rm_or_imm, int shift_type, int is_imm,
     if (is_imm) {
         /* Shift by immediate */
         switch (shift_type) {
-            case 0: /* LSL */
+            case 0: /* LSL - UBFM alias: immr = (width - shift) & 0x3F, imms = width - 1 */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? 0xD3400000 : 0x53000000;
-                instr |= ((width - rm_or_imm) & (width - 1)) << 16;
-                instr |= (width - 1 - rm_or_imm) << 10;
+                instr |= ((width - rm_or_imm) & 0x3F) << 16;  /* immr */
+                instr |= (width - 1) << 10;                   /* imms */
                 break;
-            case 1: /* LSR */
+            case 1: /* LSR - UBFM alias: immr = shift, imms = width - 1 */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? 0xD3400000 : 0x53000000;
-                instr |= rm_or_imm << 16;
-                instr |= (width - 1) << 10;
+                instr |= (rm_or_imm & 0x3F) << 16;            /* immr */
+                instr |= (width - 1) << 10;                   /* imms */
                 break;
-            case 2: /* ASR */
+            case 2: /* ASR - SBFM alias: immr = shift, imms = width - 1 */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? 0x93400000 : 0x13000000;
-                instr |= rm_or_imm << 16;
-                instr |= (width - 1) << 10;
+                instr |= (rm_or_imm & 0x3F) << 16;            /* immr */
+                instr |= (width - 1) << 10;                   /* imms */
                 break;
-            case 3: /* ROR */
+            case 3: /* ROR - EXTR alias: Rm = shift, Rn = source, Rd = dest */
                 if (rm_or_imm < 0 || rm_or_imm >= width) {
                     tcc_error("shift immediate out of range");
                     return;
                 }
                 instr = is_64bit ? 0x93C00000 : 0x13800000;
-                instr |= (rn & 0x1F) << 16;
-                instr |= (rm_or_imm & (width - 1)) << 10;
-                break;
+                instr |= (rm_or_imm & 0x1F) << 16;            /* Rm = shift amount */
+                instr |= (rn & 0x1F) << 5;                    /* Rn = source */
+                instr |= rd & 0x1F;                           /* Rd = dest */
+                emit_instr32(instr);
+                return;
             default:
                 tcc_error("unknown shift type");
                 return;
@@ -685,6 +855,16 @@ static void asm_shift(TCCState *s1, int token)
     parse_operand(s1, &op1);
     if (tok == ',') next();
     parse_operand(s1, &op2);
+
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (!(op2.type & OP_REG)) {
+        tcc_error("expected register in second operand");
+        return;
+    }
+
     rd = op1.reg;
     rn = op2.reg;
 
@@ -865,6 +1045,16 @@ static void asm_data_proc(TCCState *s1, int token)
     parse_operand(s1, &op1);
     if (tok == ',') next();
     parse_operand(s1, &op2);
+
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (!(op2.type & OP_REG)) {
+        tcc_error("expected register in second operand");
+        return;
+    }
+
     rd = op1.reg;
     rn = op2.reg;
 
@@ -882,8 +1072,14 @@ static void asm_data_proc(TCCState *s1, int token)
             else
                 tcc_error("immediate operand not valid for this instruction");
         } else {
+            if (!(op3.type & OP_REG)) {
+                tcc_error("expected register in third operand");
+                return;
+            }
             rm = op3.reg;
-            is_64bit = (op1.reg_type & REG_X) || (op2.reg_type & REG_X) || (op3.reg_type & REG_X);
+            is_64bit = (op1.reg_type & REG_X);
+            if (is_64bit != !!(op2.reg_type & REG_X) || is_64bit != !!(op3.reg_type & REG_X))
+                tcc_error("mismatched register widths");
             gen_dp_reg(opcode, rd, rn, rm, is_64bit);
         }
     } else if (op2.type & OP_IM) {
@@ -906,6 +1102,15 @@ static void asm_ldst(TCCState *s1, int token)
     parse_operand(s1, &op1);
     if (tok == ',') next();
     parse_operand(s1, &op2);
+
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (op2.type != OP_ADDR) {
+        tcc_error("expected address operand in second operand");
+        return;
+    }
 
     rt = op1.reg;
     rn = op2.reg;
@@ -982,6 +1187,14 @@ static void asm_ldst_pair(TCCState *s1, int token)
         next();
     parse_operand(s1, &op3);
 
+    if (!(op1.type & OP_REG)) {
+        tcc_error("expected register in first operand");
+        return;
+    }
+    if (!(op2.type & OP_REG)) {
+        tcc_error("expected register in second operand");
+        return;
+    }
     if (!(op3.type & OP_ADDR))
         tcc_error("pair load/store requires an address operand");
 
@@ -1040,6 +1253,35 @@ static void asm_sysreg(TCCState *s1, int token)
     gen_msr(op.reg, sysreg);
 }
 
+/* Get condition code from branch instruction token */
+static int get_branch_condition(int branch_token)
+{
+    int cond_token;
+    
+    /* Map branch token to condition token (strip 'b' prefix) */
+    switch (branch_token) {
+        case TOK_ASM_beq: cond_token = TOK_ASM_eq; break;
+        case TOK_ASM_bne: cond_token = TOK_ASM_ne; break;
+        case TOK_ASM_bcs:
+        case TOK_ASM_bhs: cond_token = TOK_ASM_cs; break;
+        case TOK_ASM_bcc:
+        case TOK_ASM_blo: cond_token = TOK_ASM_cc; break;
+        case TOK_ASM_bmi: cond_token = TOK_ASM_mi; break;
+        case TOK_ASM_bpl: cond_token = TOK_ASM_pl; break;
+        case TOK_ASM_bvs: cond_token = TOK_ASM_vs; break;
+        case TOK_ASM_bvc: cond_token = TOK_ASM_vc; break;
+        case TOK_ASM_bhi: cond_token = TOK_ASM_hi; break;
+        case TOK_ASM_bls: cond_token = TOK_ASM_ls; break;
+        case TOK_ASM_bge: cond_token = TOK_ASM_ge; break;
+        case TOK_ASM_blt: cond_token = TOK_ASM_lt; break;
+        case TOK_ASM_bgt: cond_token = TOK_ASM_gt; break;
+        case TOK_ASM_ble: cond_token = TOK_ASM_le; break;
+        default: return -1;
+    }
+    
+    return parse_condition(cond_token);
+}
+
 /* Handle branch instructions */
 static void asm_branch(TCCState *s1, int token)
 {
@@ -1054,7 +1296,10 @@ static void asm_branch(TCCState *s1, int token)
         return;
     }
 
-    parse_operand(s1, &op);
+    if (token == TOK_ASM_br || token == TOK_ASM_blr || token == TOK_ASM_ret)
+        parse_operand(s1, &op);
+    else
+        parse_expr_operand(s1, &op);
 
     if (op.type & OP_IM) {
         sym = op.e.sym;
@@ -1062,27 +1307,7 @@ static void asm_branch(TCCState *s1, int token)
             /* Symbolic address - emit relocation */
             offset = 0;
 
-            /* Check for conditional branch */
-            cond = -1;
-            switch (token) {
-                case TOK_ASM_beq: cond = 0; break;
-                case TOK_ASM_bne: cond = 1; break;
-                case TOK_ASM_bcs:
-                case TOK_ASM_bhs: cond = 2; break;
-                case TOK_ASM_bcc:
-                case TOK_ASM_blo: cond = 3; break;
-                case TOK_ASM_bmi: cond = 4; break;
-                case TOK_ASM_bpl: cond = 5; break;
-                case TOK_ASM_bvs: cond = 6; break;
-                case TOK_ASM_bvc: cond = 7; break;
-                case TOK_ASM_bhi: cond = 8; break;
-                case TOK_ASM_bls: cond = 9; break;
-                case TOK_ASM_bge: cond = 10; break;
-                case TOK_ASM_blt: cond = 11; break;
-                case TOK_ASM_bgt: cond = 12; break;
-                case TOK_ASM_ble: cond = 13; break;
-            }
-
+            cond = get_branch_condition(token);
             if (cond >= 0) {
                 /* Conditional branch - use CONDBR19 relocation */
                 gen_b_cond(cond, 0);
@@ -1104,27 +1329,7 @@ static void asm_branch(TCCState *s1, int token)
         } else {
             offset = (int32_t)op.e.v - ind;
 
-            /* Check for conditional branch */
-            cond = -1;
-            switch (token) {
-                case TOK_ASM_beq: cond = 0; break;
-                case TOK_ASM_bne: cond = 1; break;
-                case TOK_ASM_bcs:
-                case TOK_ASM_bhs: cond = 2; break;
-                case TOK_ASM_bcc:
-                case TOK_ASM_blo: cond = 3; break;
-                case TOK_ASM_bmi: cond = 4; break;
-                case TOK_ASM_bpl: cond = 5; break;
-                case TOK_ASM_bvs: cond = 6; break;
-                case TOK_ASM_bvc: cond = 7; break;
-                case TOK_ASM_bhi: cond = 8; break;
-                case TOK_ASM_bls: cond = 9; break;
-                case TOK_ASM_bge: cond = 10; break;
-                case TOK_ASM_blt: cond = 11; break;
-                case TOK_ASM_bgt: cond = 12; break;
-                case TOK_ASM_ble: cond = 13; break;
-            }
-
+            cond = get_branch_condition(token);
             if (cond >= 0) {
                 gen_b_cond(cond, offset);
             } else {
@@ -1167,7 +1372,7 @@ static void asm_cb(TCCState *s1, int token)
 
     parse_operand(s1, &op1);
     if (tok == ',') next();
-    parse_operand(s1, &op2);
+    parse_expr_operand(s1, &op2);
 
     rt = op1.reg;
     is_64bit = (op1.reg_type & REG_X);
@@ -1400,28 +1605,138 @@ ST_FUNC void subst_asm_operand(CString *add_str, SValue *sv, int modifier)
     }
 }
 
-static int asm_has_clobbers(const uint8_t *clobber_regs)
-{
-    int i;
-    for (i = 0; i < NB_ASM_REGS; ++i)
-        if (clobber_regs[i])
-            return 1;
-    return 0;
-}
-
-/* Basic inline asm strings are assembled directly by tccasm.c.
-   Operand allocation and clobber handling are still unsupported here. */
 ST_FUNC void asm_gen_code(ASMOperand *operands, int nb_operands,
                           int nb_outputs, int is_output,
                           uint8_t *clobber_regs,
                           int out_reg)
 {
-    (void)operands;
-    (void)nb_outputs;
-    (void)is_output;
+    uint8_t regs_allocated[NB_ASM_REGS];
+    ASMOperand *op;
+    int i, reg;
+    static const uint8_t reg_saved[] = {
+        19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+        29, 30
+    };
 
-    if (nb_operands > 0 || asm_has_clobbers(clobber_regs) || out_reg >= 0)
-        tcc_error("ARM64 extended inline asm is not implemented");
+    memcpy(regs_allocated, clobber_regs, sizeof(regs_allocated));
+    for (i = 0; i < nb_operands; i++) {
+        op = &operands[i];
+        if (op->reg >= 0)
+            regs_allocated[op->reg] = 1;
+    }
+
+    if (!is_output) {
+        int saved_count = 0;
+        int first_saved = -1;
+        
+        for (i = 0; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i++) {
+            reg = reg_saved[i];
+            if (regs_allocated[reg]) {
+                if (first_saved < 0)
+                    first_saved = i;
+                saved_count++;
+            }
+        }
+        
+        if (saved_count > 0) {
+            int stack_size = ((saved_count + 1) / 2) * 16;
+            gen_sub_imm(31, 31, stack_size, 1, 0);
+            
+            for (i = first_saved; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i += 2) {
+                int reg1 = reg_saved[i];
+                int reg2 = (i + 1 < sizeof(reg_saved)/sizeof(reg_saved[0])) ? reg_saved[i + 1] : -1;
+                
+                if (regs_allocated[reg1]) {
+                    if (reg2 >= 0 && regs_allocated[reg2]) {
+                        uint32_t instr = 0xA9000000;
+                        int offset = ((i - first_saved) / 2) * 8;
+                        instr |= (offset & 0x7F) << 15;
+                        instr |= (reg2 & 0x1F) << 10;
+                        instr |= (reg1 & 0x1F) << 5;
+                        instr |= 31 & 0x1F;
+                        emit_instr32(instr);
+                    } else {
+                        uint32_t instr = 0xF9000000;
+                        int offset = (i - first_saved) * 8;
+                        instr |= ((offset >> 3) & 0xFFF) << 10;
+                        instr |= (reg1 & 0x1F) << 5;
+                        instr |= 31 & 0x1F;
+                        emit_instr32(instr);
+                    }
+                }
+            }
+        }
+
+        for (i = 0; i < nb_operands; i++) {
+            op = &operands[i];
+            if (op->reg >= 0) {
+                if ((op->vt->r & VT_VALMASK) == VT_LLOCAL && op->is_memory) {
+                    SValue sv;
+                    sv = *op->vt;
+                    sv.r = (sv.r & ~VT_VALMASK) | VT_LOCAL | VT_LVAL;
+                    sv.type.t = VT_PTR;
+                    load(op->reg, &sv);
+                } else if (i >= nb_outputs || op->is_rw) {
+                    load(op->reg, op->vt);
+                }
+            }
+        }
+    } else {
+        for (i = 0; i < nb_outputs; i++) {
+            op = &operands[i];
+            if (op->reg >= 0) {
+                if ((op->vt->r & VT_VALMASK) == VT_LLOCAL) {
+                    if (!op->is_memory) {
+                        SValue sv;
+                        sv = *op->vt;
+                        sv.r = (sv.r & ~VT_VALMASK) | VT_LOCAL;
+                        sv.type.t = VT_PTR;
+                        load(out_reg, &sv);
+
+                        sv = *op->vt;
+                        sv.r = (sv.r & ~VT_VALMASK) | out_reg;
+                        store(op->reg, &sv);
+                    }
+                } else {
+                    store(op->reg, op->vt);
+                }
+            }
+        }
+        
+        for (i = sizeof(reg_saved)/sizeof(reg_saved[0]) - 1; i >= 0; i--) {
+            int reg1 = reg_saved[i];
+            int reg2 = (i > 0) ? reg_saved[i - 1] : -1;
+            
+            if (regs_allocated[reg1]) {
+                if (reg2 >= 0 && regs_allocated[reg2] && i > 0) {
+                    uint32_t instr = 0xA9400000;
+                    int pair_idx = i - 1;
+                    int offset = (pair_idx / 2) * 8;
+                    instr |= ((offset >> 3) & 0x7F) << 15;
+                    instr |= (reg2 & 0x1F) << 10;
+                    instr |= (reg1 & 0x1F) << 5;
+                    instr |= 31 & 0x1F;
+                    emit_instr32(instr);
+                    i--;
+                } else {
+                    uint32_t instr = 0xF9400000;
+                    int offset = i * 8;
+                    instr |= ((offset >> 3) & 0xFFF) << 10;
+                    instr |= (reg1 & 0x1F) << 5;
+                    instr |= 31 & 0x1F;
+                    emit_instr32(instr);
+                }
+            }
+        }
+        
+        for (i = 0; i < sizeof(reg_saved)/sizeof(reg_saved[0]); i++) {
+            reg = reg_saved[i];
+            if (regs_allocated[reg]) {
+                gen_add_imm(31, 31, 16, 1, 0);
+                break;
+            }
+        }
+    }
 }
 
 ST_FUNC void asm_compute_constraints(ASMOperand *operands,
@@ -1429,13 +1744,195 @@ ST_FUNC void asm_compute_constraints(ASMOperand *operands,
                                      const uint8_t *clobber_regs,
                                      int *pout_reg)
 {
-    (void)operands;
-    (void)nb_outputs;
+    ASMOperand *op;
+    int sorted_op[MAX_ASM_OPERANDS];
+    int i, j, k, p1, p2, tmp, reg, c, reg_mask;
+    const char *str;
+    uint8_t regs_allocated[NB_ASM_REGS];
 
-    if (pout_reg)
-        *pout_reg = -1;
-    if (nb_operands > 0 || asm_has_clobbers(clobber_regs))
-        tcc_error("ARM64 extended inline asm is not implemented");
+    for (i = 0; i < nb_operands; i++) {
+        op = &operands[i];
+        op->input_index = -1;
+        op->ref_index = -1;
+        op->reg = -1;
+        op->is_memory = 0;
+        op->is_rw = 0;
+        op->is_llong = 0;
+    }
+
+    for (i = 0; i < nb_operands; i++) {
+        op = &operands[i];
+        str = op->constraint;
+        str = skip_constraint_modifiers(str);
+        if (isnum(*str) || *str == '[') {
+            k = find_constraint(operands, nb_operands, str, NULL);
+            if ((unsigned)k >= i || i < nb_outputs)
+                tcc_error("invalid reference in constraint %d ('%s')", i, str);
+            op->ref_index = k;
+            if (operands[k].input_index >= 0)
+                tcc_error("cannot reference twice the same operand");
+            operands[k].input_index = i;
+            op->priority = 5;
+        } else if ((op->vt->r & VT_VALMASK) == VT_LOCAL
+                   && op->vt->sym
+                   && (reg = op->vt->sym->r & VT_VALMASK) < VT_CONST) {
+            op->priority = 1;
+            op->reg = reg;
+        } else {
+            op->priority = constraint_priority(str);
+        }
+    }
+
+    for (i = 0; i < nb_operands; i++)
+        sorted_op[i] = i;
+    for (i = 0; i < nb_operands - 1; i++) {
+        for (j = i + 1; j < nb_operands; j++) {
+            p1 = operands[sorted_op[i]].priority;
+            p2 = operands[sorted_op[j]].priority;
+            if (p2 < p1) {
+                tmp = sorted_op[i];
+                sorted_op[i] = sorted_op[j];
+                sorted_op[j] = tmp;
+            }
+        }
+    }
+
+    for (i = 0; i < NB_ASM_REGS; i++) {
+        if (clobber_regs[i])
+            regs_allocated[i] = REG_IN_MASK | REG_OUT_MASK;
+        else
+            regs_allocated[i] = 0;
+    }
+
+    for (i = 0; i < nb_operands; i++) {
+        j = sorted_op[i];
+        op = &operands[j];
+        str = op->constraint;
+        if (op->ref_index >= 0)
+            continue;
+        if (op->input_index >= 0) {
+            reg_mask = REG_IN_MASK | REG_OUT_MASK;
+        } else if (j < nb_outputs) {
+            reg_mask = REG_OUT_MASK;
+        } else {
+            reg_mask = REG_IN_MASK;
+        }
+        if (op->reg >= 0) {
+            if (is_reg_allocated(op->reg))
+                tcc_error("asm regvar requests register that's taken already");
+            reg = op->reg;
+            goto reg_found;
+        }
+    try_next:
+        c = *str++;
+        switch (c) {
+        case '=':
+            goto try_next;
+        case '+':
+            op->is_rw = 1;
+        case '&':
+            if (j >= nb_outputs)
+                tcc_error("'%c' modifier can only be applied to outputs", c);
+            reg_mask = REG_IN_MASK | REG_OUT_MASK;
+            goto try_next;
+        case 'r':
+            for (reg = 0; reg < 31; reg++) {
+                if (!is_reg_allocated(reg))
+                    goto reg_found;
+            }
+            goto try_next;
+        case 'w':
+            for (reg = 0; reg < 31; reg++) {
+                if (!is_reg_allocated(reg))
+                    goto reg_found;
+            }
+            goto try_next;
+        case 'f':
+        case 'x':
+            for (reg = 32; reg < 64; reg++) {
+                if (!is_reg_allocated(reg))
+                    goto reg_found;
+            }
+            goto try_next;
+        case 'm':
+        case 'g':
+            if (j < nb_outputs || c == 'm') {
+                if ((op->vt->r & VT_VALMASK) == VT_LLOCAL) {
+                    for (reg = 0; reg < 31; reg++) {
+                        if (!(regs_allocated[reg] & REG_IN_MASK))
+                            goto reg_found1;
+                    }
+                    goto try_next;
+                reg_found1:
+                    regs_allocated[reg] |= REG_IN_MASK;
+                    op->reg = reg;
+                    op->is_memory = 1;
+                }
+            }
+            break;
+        case 'i':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL)) == VT_CONST))
+                goto try_next;
+            break;
+        case 'I':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
+            if (!is_valid_add_imm(op->vt->c.i))
+                goto try_next;
+            break;
+        case 'J':
+        case 'K':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
+            if (!is_valid_logical_imm(op->vt->c.i, 32))
+                goto try_next;
+            break;
+        case 'L':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL | VT_SYM)) == VT_CONST))
+                goto try_next;
+            if (!is_valid_movw_imm(op->vt->c.i))
+                goto try_next;
+            break;
+        case 'n':
+            if (!((op->vt->r & (VT_VALMASK | VT_LVAL)) == VT_CONST))
+                goto try_next;
+            break;
+        default:
+            tcc_warning("asm constraint %d ('%s') could not be satisfied",
+                       j, op->constraint);
+            break;
+        }
+        if (op->input_index >= 0) {
+            operands[op->input_index].reg = op->reg;
+            operands[op->input_index].is_llong = op->is_llong;
+        }
+        continue;
+    reg_found:
+        op->is_llong = 0;
+        op->reg = reg;
+        regs_allocated[reg] |= reg_mask;
+        if (op->input_index >= 0) {
+            operands[op->input_index].reg = op->reg;
+            operands[op->input_index].is_llong = op->is_llong;
+        }
+    }
+
+    *pout_reg = -1;
+    for (i = 0; i < nb_operands; i++) {
+        op = &operands[i];
+        if (op->reg >= 0 &&
+            (op->vt->r & VT_VALMASK) == VT_LLOCAL &&
+            !op->is_memory) {
+            for (reg = 0; reg < NB_ASM_REGS; reg++) {
+                if (!(regs_allocated[reg] & REG_OUT_MASK))
+                    goto reg_found2;
+            }
+            tcc_error("could not find free output register for reloading");
+        reg_found2:
+            *pout_reg = reg;
+            break;
+        }
+    }
 }
 
 /* Handle clobber list */
@@ -1444,8 +1941,11 @@ ST_FUNC void asm_clobber(uint8_t *clobber_regs, const char *str)
     int reg;
     TokenSym *ts;
 
-    if (!strcmp(str, "memory") || !strcmp(str, "cc") || !strcmp(str, "flags"))
+    if (!strcmp(str, "memory") || 
+        !strcmp(str, "cc") || 
+        !strcmp(str, "flags"))
         return;
+    
     ts = tok_alloc(str, strlen(str));
     reg = arm64_parse_regvar(ts->tok);
     if (reg == -1) {
