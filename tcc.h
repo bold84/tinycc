@@ -23,6 +23,9 @@
 
 #define _GNU_SOURCE
 #define _DARWIN_C_SOURCE
+#if defined(_M_ARM64) && !defined(__aarch64__)
+# define __aarch64__ 1
+#endif
 #include "config.h"
 
 #include <stdarg.h>
