@@ -94,9 +94,12 @@ if (%BINDIR%)==() set BINDIR=%TCCDIR%
 
 set D32=-DTCC_TARGET_PE -DTCC_TARGET_I386
 set D64=-DTCC_TARGET_PE -DTCC_TARGET_X86_64
+set DARM64=-DTCC_TARGET_PE -DTCC_TARGET_ARM64
 set P32=i386-win32
 set P64=x86_64-win32
+set PARM64=arm64-win32
 
+if %T%==arm64 goto :tarm64
 if %T%==64 goto :t64
 set D=%D32%
 set P=%P32%
@@ -113,6 +116,11 @@ set PX=%P32%
 set TX=32
 goto :p3
 
+:tarm64
+set D=%DARM64%
+set P=%PARM64%
+goto :p3
+
 :p3
 git.exe --version 2>nul
 if not %ERRORLEVEL%==0 goto :git_done
@@ -125,12 +133,14 @@ if %ERRORLEVEL%==1 set GITHASH=%GITHASH%*
 
 :config.h
 echo>..\config.h #define TCC_VERSION "%VERSION%"
-if not (%GITHASH%)==() echo>> ..\config.h #define TCC_GITHASH "%GITHASH%"
+if not "%GITHASH%"=="" echo>> ..\config.h #define TCC_GITHASH "%GITHASH%"
 @if not (%BINDIR%)==(%TCCDIR%) echo>> ..\config.h #define CONFIG_TCCDIR "%TCCDIR:\=/%"
+if "%TX%"=="" goto :skip_cross
 if %TX%==64 echo>> ..\config.h #ifdef TCC_TARGET_X86_64
 if %TX%==32 echo>> ..\config.h #ifdef TCC_TARGET_I386
 echo>> ..\config.h #define CONFIG_TCC_CROSSPREFIX "%PX%-"
 echo>> ..\config.h #endif
+:skip_cross
 
 @rem echo>> ..\config.h #define CONFIG_TCC_PREDEFS 1
 @rem %CC% -DC2STR ..\conftest.c -o c2str.exe
@@ -168,6 +178,7 @@ if exist libtcc.dll .\tcc -impdef libtcc.dll -o libtcc\libtcc.def
 @if errorlevel 1 goto :the_end
 
 :lib
+@rem ARM64 assembler files and basic inline asm strings are supported here.
 call :make_lib %T% || goto :the_end
 @if exist %PX%-tcc.exe call :make_lib %TX% %PX%- || goto :the_end
 
@@ -206,7 +217,7 @@ exit /B %ERRORLEVEL%
 .\tcc -B. -m%1 -c ../lib/stdatomic.c
 .\tcc -B. -m%1 -c ../lib/atomic.S
 .\tcc -B. -m%1 -c ../lib/builtin.c
-.\tcc -B. -m%1 -ar lib/%2libtcc1.a libtcc1.o crt1.o crt1w.o wincrt1.o wincrt1w.o dllcrt1.o dllmain.o chkstk.o alloca.o alloca-bt.o stdatomic.o atomic.o builtin.o
+.\tcc -ar lib/%2libtcc1.a libtcc1.o crt1.o crt1w.o wincrt1.o wincrt1w.o dllcrt1.o dllmain.o chkstk.o alloca.o alloca-bt.o stdatomic.o atomic.o builtin.o
 .\tcc -B. -m%1 -c ../lib/bcheck.c -o lib/%2bcheck.o -bt -I..
 .\tcc -B. -m%1 -c ../lib/bt-exe.c -o lib/%2bt-exe.o
 .\tcc -B. -m%1 -c ../lib/bt-log.c -o lib/%2bt-log.o
